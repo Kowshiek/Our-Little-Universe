@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -34,7 +34,7 @@ app.use(cors({
 app.use(express.json());
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (req: Request, res: Response) => {
   res.json({
     status: 'online',
     game: 'Our Little Universe',
@@ -57,7 +57,7 @@ let clientDistPath = possibleDistPaths.find((p) => fs.existsSync(p));
 if (clientDistPath) {
   console.log(`📦 Serving static client PWA from ${clientDistPath}`);
   app.use(express.static(clientDistPath));
-  app.get('*', (req, res, next) => {
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
       return next();
     }
