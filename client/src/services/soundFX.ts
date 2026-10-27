@@ -145,6 +145,22 @@ class SoundFX {
     });
   }
 
+  public playLightPunch() {
+    this.playLightAttack();
+  }
+
+  public playHeavyStrike() {
+    this.playHeavyAttack();
+  }
+
+  public playSpecialBlast() {
+    this.playSpecialAttack();
+  }
+
+  public playShieldBlock() {
+    this.playBlock();
+  }
+
   public playVictory() {
     if (!this.enabled) return;
     this.initCtx();

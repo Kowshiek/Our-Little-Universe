@@ -5,7 +5,7 @@ import { socketService } from './services/socket';
 import { connectivity, ConnectivityState } from './services/connectivity';
 import { LandingPage } from './components/LandingPage';
 import { LobbyRoom } from './components/LobbyRoom';
-import { BattleCanvas, BattleCanvasHandle } from './game/BattleCanvas';
+import { ThreeBattleCanvas, ThreeBattleCanvasHandle } from './game/three/ThreeBattleCanvas';
 import { BattleHUD } from './components/BattleHUD';
 import { MobileFightControls } from './components/MobileFightControls';
 import { AuthModal } from './components/AuthModal';
@@ -15,14 +15,12 @@ import { HowToPlayModal } from './components/HowToPlayModal';
 import { InstallModal } from './components/InstallModal';
 import { MatchResultsModal } from './components/MatchResultsModal';
 import { OfflineOverlay } from './components/OfflineOverlay';
-import { Sparkles, Swords, ArrowLeft, Loader2 } from 'lucide-react';
-import { FIGHTERS } from './types/combat';
+import { Swords, ArrowLeft, Globe, Wifi } from 'lucide-react';
 
 export const App: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth();
   const {
     currentRoomId,
-    secretCode,
     myFighterId,
     selectedArenaId,
     opponent,
@@ -31,13 +29,12 @@ export const App: React.FC = () => {
     isTrainingMode,
     matchWinner,
     createPrivateRoom,
-    joinPrivateRoom,
     leaveRoom,
     startTrainingMode,
     exitTrainingMode,
   } = useBattle();
 
-  const battleCanvasRef = useRef<BattleCanvasHandle>(null);
+  const battleCanvasRef = useRef<ThreeBattleCanvasHandle>(null);
 
   // Modals state
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -47,6 +44,7 @@ export const App: React.FC = () => {
   const [rosterModalOpen, setRosterModalOpen] = useState(false);
   const [howToPlayModalOpen, setHowToPlayOpen] = useState(false);
   const [installModalOpen, setInstallOpen] = useState(false);
+  const [backendConfigOpen, setBackendConfigOpen] = useState(false);
 
   // Local Training Dummy health & energy state
   const [trainingDummyHp, setTrainingDummyHp] = useState(100);
@@ -77,13 +75,13 @@ export const App: React.FC = () => {
     }
   }, [user]);
 
-  // Hook socket combat visual events to Phaser Canvas
+  // Hook socket combat visual events to 3D Canvas
   useEffect(() => {
     const unsubHit = socketService.on('combat_hit', (data: any) => {
       if (battleCanvasRef.current) {
         const text = data.blocked ? `BLOCKED -${data.damage}` : `-${data.damage}`;
         const color = data.blocked ? '#38bdf8' : data.attackType === 'special' ? '#ffd166' : '#ff2a85';
-        battleCanvasRef.current.showHitEffect(data.victimX || 500, (data.victimY || 350) - 40, text, color);
+        battleCanvasRef.current.showHitEffect(data.victimX || 0, data.victimY || 1.2, text, color);
       }
     });
 
@@ -99,6 +97,10 @@ export const App: React.FC = () => {
 
   // Create Private Battle Room
   const handleCreateBattle = () => {
+    if (!connectivityState.isBackendReachable) {
+      setBackendConfigOpen(true);
+      return;
+    }
     if (!user) {
       setAuthMode('register');
       setAuthModalOpen(true);
@@ -109,6 +111,10 @@ export const App: React.FC = () => {
 
   // Join Battle Room with code
   const handleJoinBattle = () => {
+    if (!connectivityState.isBackendReachable) {
+      setBackendConfigOpen(true);
+      return;
+    }
     if (!user) {
       setAuthMode('login');
       setAuthModalOpen(true);
@@ -117,10 +123,11 @@ export const App: React.FC = () => {
     }
   };
 
-  // Start Training Dojo
+  // Start 3D Training Dojo (Instant Play, works offline & online!)
   const handleStartTraining = () => {
     setTrainingDummyHp(100);
     setTrainingDummyEnergy(0);
+    setBackendConfigOpen(false);
     startTrainingMode();
   };
 
@@ -128,16 +135,16 @@ export const App: React.FC = () => {
   const handleDamageDummy = (dmg: number) => {
     setTrainingDummyHp((prev) => {
       const nextHp = Math.max(0, prev - dmg);
-      battleCanvasRef.current?.showHitEffect(560, 360, `-${dmg}`, '#ffd166');
       return nextHp;
     });
   };
 
-  // Strict Online-Only: If backend is completely unreachable, show OfflineOverlay
-  if (!connectivityState.isBackendReachable && !inMatch && !currentRoomId) {
+  // Device Offline Blocker (ONLY if user has zero network connection)
+  if (!connectivityState.isOnline && !inMatch) {
     return (
       <OfflineOverlay
-        message={connectivityState.errorMessage || "Connect to the internet to enter Love Battle."}
+        message="Your device is offline. Connect to Wi-Fi or mobile network to play online, or enter Solo 3D Training Dojo."
+        onStartTraining={handleStartTraining}
         onRetry={() => connectivity.checkBackendConnectivity()}
       />
     );
@@ -151,13 +158,13 @@ export const App: React.FC = () => {
           <Swords className="w-8 h-8 text-white" />
         </div>
         <p className="text-sm font-black text-pink-300 tracking-widest font-game uppercase animate-pulse">
-          Awakening Love Battle Arena...
+          Awakening 3D Love Battle Arena...
         </p>
       </div>
     );
   }
 
-  // 1. IN MATCH / FIGHTING VIEW (Phaser 3 + Combat HUD + Touch Controls)
+  // 1. IN MATCH / FIGHTING VIEW (Three.js 3D Battle Arena + Combat HUD + Touch Controls)
   if (inMatch) {
     const isP1 = match?.p1?.userId === user?.id || isTrainingMode;
     const p1Data = isP1 ? match?.p1 : match?.p2;
@@ -185,11 +192,17 @@ export const App: React.FC = () => {
                 }
               }
             }}
-            className="px-3 py-1.5 rounded-xl bg-slate-900/80 border border-purple-500/30 text-purple-300 hover:text-white text-xs font-black flex items-center gap-1.5 transition shadow backdrop-blur-md"
+            className="px-3.5 py-2 rounded-xl bg-slate-900/80 border border-purple-500/30 text-purple-200 hover:text-white text-xs font-black flex items-center gap-1.5 transition shadow backdrop-blur-md"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>{isTrainingMode ? 'Exit Dojo' : 'Forfeit'}</span>
+            <ArrowLeft className="w-4 h-4" />
+            <span>{isTrainingMode ? 'Exit 3D Dojo' : 'Forfeit'}</span>
           </button>
+        </div>
+
+        {/* 3D Battle Badge */}
+        <div className="absolute top-3 right-3 z-30 pointer-events-auto hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-pink-500/30 text-pink-300 text-[11px] font-black uppercase tracking-wider backdrop-blur-md">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+          <span>Real-Time 3D Engine</span>
         </div>
 
         {/* Arcade Combat HUD */}
@@ -199,7 +212,7 @@ export const App: React.FC = () => {
           p1Health={p1Health}
           p1Energy={p1Energy}
           p1Wins={p1Wins}
-          p2Name={p2Data?.displayName || opponent?.displayName || (isTrainingMode ? 'Training Dummy' : 'Challenger')}
+          p2Name={p2Data?.displayName || opponent?.displayName || (isTrainingMode ? '3D Training Dummy' : 'Challenger')}
           p2Fighter={p2Data?.fighterId || opponent?.fighterId || 'cupid_spark'}
           p2Health={p2Health}
           p2Energy={p2Energy}
@@ -210,15 +223,15 @@ export const App: React.FC = () => {
           isTrainingMode={isTrainingMode}
         />
 
-        {/* Phaser 3 Playable Canvas */}
-        <BattleCanvas
+        {/* Real 3D Playable Three.js Canvas */}
+        <ThreeBattleCanvas
           ref={battleCanvasRef}
           myUserId={user?.id}
           myFighterId={myFighterId}
           myDisplayName={user?.displayName || 'Fighter'}
           opponentUserId={opponent?.userId || (isTrainingMode ? 'dummy-bot' : undefined)}
           opponentFighterId={opponent?.fighterId || 'cupid_spark'}
-          opponentDisplayName={opponent?.displayName || (isTrainingMode ? 'Training Dummy' : 'Opponent')}
+          opponentDisplayName={opponent?.displayName || (isTrainingMode ? '3D Dummy' : 'Opponent')}
           arenaId={selectedArenaId}
           isTrainingMode={isTrainingMode}
           onSendMove={(data) => socketService.sendMove(data)}
@@ -261,6 +274,25 @@ export const App: React.FC = () => {
   // 3. LANDING PAGE VIEW
   return (
     <>
+      {/* Non-intrusive Backend Server Status Banner if disconnected */}
+      {!connectivityState.isBackendReachable && (
+        <div className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-pink-950/90 via-purple-950/90 to-slate-900/90 border-b border-pink-500/30 px-4 py-2 flex items-center justify-between text-xs text-pink-200 backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="font-medium">
+              Backend Server connecting... You can play <b>Solo 3D Dojo</b> now, or set custom server URL.
+            </span>
+          </div>
+          <button
+            onClick={() => setBackendConfigOpen(true)}
+            className="px-2.5 py-1 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-white font-bold flex items-center gap-1 border border-pink-500/40"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>Server Settings</span>
+          </button>
+        </div>
+      )}
+
       <LandingPage
         onCreateBattle={handleCreateBattle}
         onJoinBattle={handleJoinBattle}
@@ -305,6 +337,16 @@ export const App: React.FC = () => {
         isOpen={installModalOpen}
         onClose={() => setInstallOpen(false)}
       />
+
+      {backendConfigOpen && (
+        <OfflineOverlay
+          isChecking={false}
+          onRetry={() => connectivity.checkBackendConnectivity()}
+          onStartTraining={handleStartTraining}
+          onDismiss={() => setBackendConfigOpen(false)}
+          message="Connect your Love Battle backend URL (e.g. Render/Railway URL) for 1v1 online couple multiplayer, or jump into the 3D Training Dojo right away!"
+        />
+      )}
     </>
   );
 };

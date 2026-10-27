@@ -71,7 +71,7 @@ class ConnectivityManager {
         isOnline: false,
         isBackendReachable: false,
         latencyMs: null,
-        errorMessage: "You're offline. Connect to the internet to enter Our Little Universe.",
+        errorMessage: "You're offline. Connect to the internet to enter Love Battle.",
       });
       return false;
     }
@@ -105,7 +105,7 @@ class ConnectivityManager {
         }
 
         const data = await response.json().catch(() => ({}));
-        if (data.status === 'online' && data.game === 'Our Little Universe') {
+        if (data.status === 'online' || data.game === 'LOVE BATTLE' || data.game === 'Our Little Universe') {
           const latency = Math.round(performance.now() - startTime);
           this.updateState({
             isOnline: true,
@@ -128,16 +128,18 @@ class ConnectivityManager {
           isOnline: true,
           isBackendReachable: false,
           latencyMs: null,
-          errorMessage: 'Server is currently unreachable. Retrying...',
+          errorMessage: 'Server is currently waking up or unreachable.',
         });
         return false;
       }
     } catch (err: any) {
       this.updateState({
-        isOnline: navigator.onLine,
+        isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
         isBackendReachable: false,
         latencyMs: null,
-        errorMessage: "You're offline. Connect to the internet to enter Our Little Universe.",
+        errorMessage: typeof navigator !== 'undefined' && !navigator.onLine
+          ? "No internet connection detected on your device."
+          : "Backend server is waking up or not yet connected.",
       });
       return false;
     }
