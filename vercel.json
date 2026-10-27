@@ -5,8 +5,12 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/health",
+      "destination": "/api/health.js"
+    },
+    {
       "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "destination": "/api/[...path].js?path=$1"
     },
     {
       "source": "/(.*)",

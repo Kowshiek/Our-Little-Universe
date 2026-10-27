@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { socketService } from '../services/socket';
+import { roomSync, RoomParticipant } from '../services/roomSync';
 import { FighterId, ArenaId, FIGHTERS } from '../types/combat';
 import { useAuth } from './AuthContext';
 import confetti from 'canvas-confetti';
 
-interface OpponentData {
+export interface OpponentData {
   userId: string;
   displayName: string;
   fighterId: FighterId;
@@ -29,8 +30,8 @@ interface BattleContextType {
   matchWinner: string | null;
   error: string | null;
   clearError: () => void;
-  createPrivateRoom: (arenaId?: ArenaId) => void;
-  joinPrivateRoom: (code: string) => void;
+  createPrivateRoom: (arenaId?: ArenaId) => Promise<void>;
+  joinPrivateRoom: (code: string) => Promise<void>;
   leaveRoom: () => void;
   chooseFighter: (fighterId: FighterId) => void;
   chooseArena: (arenaId: ArenaId) => void;
@@ -40,6 +41,7 @@ interface BattleContextType {
   exitTrainingMode: () => void;
   voteRematch: () => void;
   sendEmote: (emote: string) => void;
+  addAIPartnerBot: () => void;
 }
 
 const BattleContext = createContext<BattleContextType | undefined>(undefined);
@@ -72,8 +74,9 @@ export const BattleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [user]);
 
-  // Socket event listeners
+  // Dual-Layer Event Listeners (Socket.IO + Cloud RoomSync)
   useEffect(() => {
+    // 1. Socket.IO Listeners
     const unsubError = socketService.on('error', (data) => {
       setError(data.message || 'Battle room error');
     });
@@ -169,6 +172,45 @@ export const BattleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setRematchVotes(data.votesCount);
     });
 
+    // 2. Cloud RoomSync Listeners (Guarantees cross-device match on Vercel)
+    const unsubSyncOppJoined = roomSync.on('opponent_joined', (data) => {
+      console.log('⚔️ [BattleContext] Partner joined via Cloud Sync:', data.opponent);
+      setOpponent(data.opponent);
+    });
+
+    const unsubSyncOppLeft = roomSync.on('opponent_left', () => {
+      setOpponent(null);
+    });
+
+    const unsubSyncReady = roomSync.on('ready_toggled', (data) => {
+      if (data.userId === user?.id) {
+        setMyIsReady(data.isReady);
+      } else {
+        setOpponent((prev) => (prev ? { ...prev, isReady: data.isReady } : null));
+      }
+    });
+
+    const unsubSyncFighter = roomSync.on('fighter_selected', (data) => {
+      if (data.userId === user?.id) {
+        setMyFighterId(data.fighterId);
+      } else {
+        setOpponent((prev) => (prev ? { ...prev, fighterId: data.fighterId } : null));
+      }
+    });
+
+    const unsubSyncArena = roomSync.on('arena_selected', (data) => {
+      setSelectedArenaId(data.arenaId);
+    });
+
+    const unsubSyncMatchStarted = roomSync.on('match_started', (data) => {
+      console.log('⚔️ [BattleContext] Match started via Cloud Sync');
+      setMatch(data.match);
+      setInMatch(true);
+      setRoundWinner(null);
+      setMatchWinner(null);
+      setRematchVotes(0);
+    });
+
     return () => {
       unsubError();
       unsubCreated();
@@ -183,6 +225,13 @@ export const BattleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubNextRound();
       unsubRestarted();
       unsubRematchVoted();
+
+      unsubSyncOppJoined();
+      unsubSyncOppLeft();
+      unsubSyncReady();
+      unsubSyncFighter();
+      unsubSyncArena();
+      unsubSyncMatchStarted();
     };
   }, [user]);
 
@@ -190,55 +239,122 @@ export const BattleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setError(null);
   };
 
-  const createPrivateRoom = (arenaId: ArenaId = 'heart_garden') => {
+  /**
+   * Create Private Battle Room
+   */
+  const createPrivateRoom = async (arenaId: ArenaId = 'heart_garden') => {
     setError(null);
     socketService.connect();
     socketService.createRoom(arenaId);
 
-    // Automatic Instant Room Creation
-    setTimeout(() => {
-      setCurrentRoomId((current) => {
-        if (current) return current;
-        const prefixes = ['LOVE', 'HEART', 'FLAME', 'CUPID'];
-        const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-        const autoCode = `${prefix}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-        setSecretCode(autoCode);
-        setSelectedArenaId(arenaId);
-        setMyRole('owner');
-        setMyIsReady(false);
-        return 'room_' + Date.now();
+    const currentUser = user || {
+      id: 'user_' + Math.random().toString(36).substring(2, 8),
+      displayName: 'Heart Fighter',
+      selectedFighter: myFighterId,
+      level: 1,
+      title: 'Passionate Challenger',
+    };
+
+    try {
+      const room = await roomSync.createRoom(currentUser, arenaId);
+      setCurrentRoomId(room.roomId);
+      setSecretCode(room.secretCode || room.code);
+      setSelectedArenaId(room.arenaId);
+      setMyRole('owner');
+      setMyIsReady(false);
+      setOpponent(null);
+
+      // Start active cloud heartbeat polling so Mobile's join is detected instantly on PC!
+      roomSync.startHeartbeat(room.secretCode || room.code, currentUser.id, (updatedRoom) => {
+        if (updatedRoom.opponent) {
+          setOpponent((prev) => {
+            if (
+              !prev ||
+              prev.userId !== updatedRoom.opponent!.userId ||
+              prev.isReady !== updatedRoom.opponent!.isReady ||
+              prev.fighterId !== updatedRoom.opponent!.fighterId
+            ) {
+              return updatedRoom.opponent;
+            }
+            return prev;
+          });
+        }
       });
-    }, 200);
+    } catch (e) {
+      console.warn('createPrivateRoom error:', e);
+    }
   };
 
-  const joinPrivateRoom = (code: string) => {
+  /**
+   * Join Private Room by Secret Code
+   */
+  const joinPrivateRoom = async (code: string) => {
     setError(null);
     const clean = code.trim().toUpperCase();
     socketService.connect();
     socketService.joinRoom(clean);
 
-    // Automatic Instant Room Joining
-    setTimeout(() => {
-      setCurrentRoomId((current) => {
-        if (current) return current;
-        setSecretCode(clean);
-        setSelectedArenaId('heart_garden');
-        setMyRole('challenger');
-        setMyIsReady(false);
+    const currentUser = user || {
+      id: 'user_' + Math.random().toString(36).substring(2, 8),
+      displayName: 'Partner (Lover)',
+      selectedFighter: myFighterId,
+      level: 1,
+      title: 'Passionate Challenger',
+    };
+
+    try {
+      const room = await roomSync.joinRoom(clean, currentUser);
+      setCurrentRoomId(room.roomId);
+      setSecretCode(clean);
+      setSelectedArenaId(room.arenaId || 'heart_garden');
+      setMyRole('challenger');
+      setMyIsReady(false);
+
+      if (room.owner) {
         setOpponent({
-          userId: 'partner-id',
-          displayName: 'Partner (Lover)',
-          fighterId: 'cupid_spark',
-          isReady: true,
-          level: 1,
-          title: 'Passionate Partner',
+          userId: room.owner.userId,
+          displayName: room.owner.displayName,
+          fighterId: room.owner.fighterId,
+          isReady: room.owner.isReady,
+          level: room.owner.level,
+          title: room.owner.title,
         });
-        return 'room_' + clean.toLowerCase();
+      }
+
+      // Start active cloud heartbeat polling so Mobile stays in sync with Owner
+      roomSync.startHeartbeat(clean, currentUser.id, (updatedRoom) => {
+        if (updatedRoom.owner) {
+          setOpponent((prev) => {
+            if (
+              !prev ||
+              prev.userId !== updatedRoom.owner.userId ||
+              prev.isReady !== updatedRoom.owner.isReady ||
+              prev.fighterId !== updatedRoom.owner.fighterId
+            ) {
+              return {
+                userId: updatedRoom.owner.userId,
+                displayName: updatedRoom.owner.displayName,
+                fighterId: updatedRoom.owner.fighterId,
+                isReady: updatedRoom.owner.isReady,
+                level: updatedRoom.owner.level,
+                title: updatedRoom.owner.title,
+              };
+            }
+            return prev;
+          });
+        }
+        if (updatedRoom.status === 'fighting' || updatedRoom.match) {
+          setInMatch(true);
+          setMatch(updatedRoom.match);
+        }
       });
-    }, 200);
+    } catch (e) {
+      console.warn('joinPrivateRoom error:', e);
+    }
   };
 
   const leaveRoom = () => {
+    roomSync.stopHeartbeat();
     socketService.disconnect();
     setCurrentRoomId(null);
     setSecretCode(null);
@@ -250,50 +366,70 @@ export const BattleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const chooseFighter = (fighterId: FighterId) => {
     setMyFighterId(fighterId);
     socketService.selectFighter(fighterId);
+    if (secretCode && user) {
+      roomSync.sendAction(secretCode, user.id, 'select_fighter', { fighterId });
+    }
   };
 
   const chooseArena = (arenaId: ArenaId) => {
     setSelectedArenaId(arenaId);
     socketService.selectArena(arenaId);
+    if (secretCode && user) {
+      roomSync.sendAction(secretCode, user.id, 'select_arena', { arenaId });
+    }
   };
 
   const toggleReady = () => {
-    setMyIsReady((prev) => !prev);
+    const nextReady = !myIsReady;
+    setMyIsReady(nextReady);
     socketService.toggleReady();
+    if (secretCode && user) {
+      roomSync.sendAction(secretCode, user.id, 'ready', { isReady: nextReady });
+    }
   };
 
   const startMatch = () => {
     socketService.startMatch();
+    const matchObj = {
+      matchId: 'match-' + Date.now(),
+      p1: {
+        userId: user?.id || 'p1',
+        displayName: user?.displayName || 'Host',
+        fighterId: myFighterId,
+        health: 100,
+        energy: 100,
+        roundWins: 0,
+      },
+      p2: {
+        userId: opponent?.userId || 'p2',
+        displayName: opponent?.displayName || 'Challenger',
+        fighterId: opponent?.fighterId || 'cupid_spark',
+        health: 100,
+        energy: 0,
+        roundWins: 0,
+      },
+      roundNumber: 1,
+      timerRemaining: 60,
+      status: 'fighting',
+    };
 
-    // Automatic Instant Match Launch
-    setTimeout(() => {
-      setInMatch((already) => {
-        if (already) return true;
-        setMatch({
-          matchId: 'match-' + Date.now(),
-          p1: {
-            userId: user?.id || 'p1',
-            displayName: user?.displayName || 'You',
-            fighterId: myFighterId,
-            health: 100,
-            energy: 100,
-            roundWins: 0,
-          },
-          p2: {
-            userId: opponent?.userId || 'p2',
-            displayName: opponent?.displayName || 'Challenger',
-            fighterId: opponent?.fighterId || 'cupid_spark',
-            health: 100,
-            energy: 0,
-            roundWins: 0,
-          },
-          roundNumber: 1,
-          timerRemaining: 60,
-          status: 'fighting',
-        });
-        return true;
-      });
-    }, 200);
+    if (secretCode && user) {
+      roomSync.sendAction(secretCode, user.id, 'start_match', { match: matchObj });
+    }
+
+    setMatch(matchObj);
+    setInMatch(true);
+  };
+
+  const addAIPartnerBot = () => {
+    setOpponent({
+      userId: 'partner_ai',
+      displayName: 'Cosmic Cupid [AI]',
+      fighterId: 'cupid_spark',
+      isReady: true,
+      level: 2,
+      title: 'Romantic AI Bot',
+    });
   };
 
   const startTrainingMode = () => {
@@ -316,6 +452,9 @@ export const BattleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const voteRematch = () => {
     socketService.voteRematch();
+    if (secretCode && user) {
+      roomSync.sendAction(secretCode, user.id, 'rematch');
+    }
   };
 
   const sendEmote = (emote: string) => {
@@ -351,6 +490,7 @@ export const BattleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         exitTrainingMode,
         voteRematch,
         sendEmote,
+        addAIPartnerBot,
       }}
     >
       {children}

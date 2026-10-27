@@ -478,6 +478,40 @@ export class ThreeBattleArena {
     }, 1200);
   }
 
+  public setOpponentPosition(x: number, y: number, facing?: 1 | -1, animState?: string) {
+    if (!this.player2) return;
+    this.player2.x = x;
+    this.player2.y = y;
+    if (facing) this.player2.facing = facing;
+    if (animState && animState !== 'hit') this.player2.animState = animState as any;
+  }
+
+  public triggerOpponentAttack(attackType: 'light' | 'heavy' | 'special') {
+    if (!this.player2) return;
+    if (attackType === 'light') {
+      this.player2.triggerLightAttack();
+      this.checkHit(this.player2, this.player1, 10, 'light');
+    } else if (attackType === 'heavy') {
+      this.player2.triggerHeavyAttack();
+      this.checkHit(this.player2, this.player1, 20, 'heavy');
+    } else if (attackType === 'special') {
+      this.player2.triggerSpecialAttack();
+      this.spawnProjectile(this.player2, 'p2', 38);
+    }
+  }
+
+  public triggerOpponentBlock(active: boolean) {
+    if (this.player2) this.player2.setBlock(active);
+  }
+
+  public triggerOpponentJump() {
+    if (this.player2 && this.player2.isGrounded) {
+      this.player2.vy = 12.0;
+      this.player2.isGrounded = false;
+      this.player2.animState = 'jump';
+    }
+  }
+
   // ==========================================
   // MAIN ANIMATION & RENDER LOOP
   // ==========================================

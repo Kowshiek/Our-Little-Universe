@@ -12,6 +12,10 @@ export interface ThreeBattleCanvasHandle {
   triggerDodge: () => void;
   showHitEffect: (x: number, y: number, text: string, color?: string) => void;
   triggerHeartClash: () => void;
+  setOpponentPosition?: (x: number, y: number, facing?: 1 | -1, animState?: string) => void;
+  triggerOpponentAttack?: (attackType: 'light' | 'heavy' | 'special') => void;
+  triggerOpponentBlock?: (active: boolean) => void;
+  triggerOpponentJump?: () => void;
 }
 
 interface ThreeBattleCanvasProps {
@@ -59,6 +63,18 @@ export const ThreeBattleCanvas = forwardRef<ThreeBattleCanvasHandle, ThreeBattle
     },
     triggerHeartClash: () => {
       arenaRef.current?.triggerHeartClashVisual();
+    },
+    setOpponentPosition: (x, y, facing, animState) => {
+      arenaRef.current?.setOpponentPosition(x, y, facing, animState);
+    },
+    triggerOpponentAttack: (attackType) => {
+      arenaRef.current?.triggerOpponentAttack(attackType);
+    },
+    triggerOpponentBlock: (active) => {
+      arenaRef.current?.triggerOpponentBlock(active);
+    },
+    triggerOpponentJump: () => {
+      arenaRef.current?.triggerOpponentJump();
     },
   }));
 

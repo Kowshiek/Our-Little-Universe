@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './context/AuthContext';
 import { useBattle } from './context/BattleContext';
 import { socketService } from './services/socket';
+import { roomSync } from './services/roomSync';
 import { connectivity, ConnectivityState } from './services/connectivity';
 import { LandingPage } from './components/LandingPage';
 import { LobbyRoom } from './components/LobbyRoom';
@@ -22,6 +23,7 @@ export const App: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth();
   const {
     currentRoomId,
+    secretCode,
     myFighterId,
     selectedArenaId,
     opponent,
@@ -76,7 +78,7 @@ export const App: React.FC = () => {
     }
   }, [user]);
 
-  // Hook socket combat visual events to 3D Canvas
+  // Hook combat visual events (Socket.IO + Cloud RoomSync) to 3D Canvas
   useEffect(() => {
     const unsubHit = socketService.on('combat_hit', (data: any) => {
       if (battleCanvasRef.current) {
@@ -90,11 +92,39 @@ export const App: React.FC = () => {
       battleCanvasRef.current?.triggerHeartClash();
     });
 
+    const unsubSocketAttack = socketService.on('attack_triggered', (data: any) => {
+      if (battleCanvasRef.current && data.userId !== user?.id) {
+        battleCanvasRef.current.triggerOpponentAttack?.(data.attackType || 'light');
+      }
+    });
+
+    const unsubSocketMove = socketService.on('opponent_moved', (data: any) => {
+      if (battleCanvasRef.current && data.userId !== user?.id) {
+        battleCanvasRef.current.setOpponentPosition?.(data.x, data.y, data.facing, data.animState);
+      }
+    });
+
+    const unsubSyncAttack = roomSync.on('combat_attack', (data: any) => {
+      if (battleCanvasRef.current && data.userId !== user?.id) {
+        battleCanvasRef.current.triggerOpponentAttack?.(data.payload?.attackType || 'light');
+      }
+    });
+
+    const unsubSyncMove = roomSync.on('combat_move', (data: any) => {
+      if (battleCanvasRef.current && data.userId !== user?.id) {
+        battleCanvasRef.current.setOpponentPosition?.(data.payload?.x, data.payload?.y, data.payload?.facing, data.payload?.animState);
+      }
+    });
+
     return () => {
       unsubHit();
       unsubClash();
+      unsubSocketAttack();
+      unsubSocketMove();
+      unsubSyncAttack();
+      unsubSyncMove();
     };
-  }, []);
+  }, [user]);
 
   // Create Private Battle Room (Automatic Instant Connection)
   const handleCreateBattle = () => {
@@ -223,8 +253,18 @@ export const App: React.FC = () => {
           opponentDisplayName={opponent?.displayName || (isTrainingMode ? '3D Dummy' : 'Opponent')}
           arenaId={selectedArenaId}
           isTrainingMode={isTrainingMode}
-          onSendMove={(data) => socketService.sendMove(data)}
-          onPerformAttack={(attackType) => socketService.performAttack(attackType)}
+          onSendMove={(data) => {
+            socketService.sendMove(data);
+            if (secretCode && user) {
+              roomSync.sendAction(secretCode, user.id, 'combat_move', data);
+            }
+          }}
+          onPerformAttack={(attackType) => {
+            socketService.performAttack(attackType);
+            if (secretCode && user) {
+              roomSync.sendAction(secretCode, user.id, 'combat_attack', { attackType });
+            }
+          }}
           onDamageDummy={handleDamageDummy}
         />
 

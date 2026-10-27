@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useBattle } from '../context/BattleContext';
 import { useAuth } from '../context/AuthContext';
 import { FighterId, ArenaId, FIGHTERS, ARENAS } from '../types/combat';
-import { Copy, Check, Share2, Swords, Crown, Shield, ArrowLeft, Play, Sparkles } from 'lucide-react';
+import { Copy, Check, Share2, Swords, Crown, Shield, ArrowLeft, Play, Sparkles, Wifi } from 'lucide-react';
 
 interface LobbyRoomProps {
   onBack: () => void;
@@ -23,6 +23,7 @@ export const LobbyRoom: React.FC<LobbyRoomProps> = ({ onBack }) => {
     toggleReady,
     startMatch,
     leaveRoom,
+    addAIPartnerBot,
   } = useBattle();
 
   const [copiedCode, setCopiedCode] = useState(false);
@@ -52,7 +53,7 @@ export const LobbyRoom: React.FC<LobbyRoomProps> = ({ onBack }) => {
   return (
     <div className="relative min-h-screen w-full flex flex-col justify-between p-4 sm:p-6 md:p-8 bg-cosmic-darkest text-slate-100 select-none">
       {/* Top Header */}
-      <header className="flex items-center justify-between w-full max-w-5xl mx-auto">
+      <header className="flex flex-wrap items-center justify-between gap-3 w-full max-w-5xl mx-auto">
         <button
           onClick={() => {
             leaveRoom();
@@ -84,6 +85,12 @@ export const LobbyRoom: React.FC<LobbyRoomProps> = ({ onBack }) => {
             </button>
           </div>
         )}
+
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-950/60 border border-purple-500/30 text-[11px] font-bold text-emerald-300">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping mr-1" />
+          <Wifi className="w-3.5 h-3.5" />
+          <span>Online Relay Active</span>
+        </div>
       </header>
 
       {/* VS Screen / Fighter Cards */}
@@ -94,7 +101,7 @@ export const LobbyRoom: React.FC<LobbyRoomProps> = ({ onBack }) => {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Crown className="w-5 h-5 text-amber-300" />
-                <span className="font-black text-white text-base tracking-wide">{user?.displayName} (You)</span>
+                <span className="font-black text-white text-base tracking-wide">{user?.displayName || 'Host'} (You)</span>
               </div>
               <span
                 className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
@@ -148,7 +155,9 @@ export const LobbyRoom: React.FC<LobbyRoomProps> = ({ onBack }) => {
                   </div>
                   <span
                     className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
-                      opponent.isReady ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-800 text-cyan-300'
+                      opponent.isReady
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse'
+                        : 'bg-slate-800 text-cyan-300'
                     }`}
                   >
                     {opponent.isReady ? 'READY' : 'NOT READY'}
@@ -164,26 +173,55 @@ export const LobbyRoom: React.FC<LobbyRoomProps> = ({ onBack }) => {
                   <p className="text-xs text-purple-200 mt-2 max-w-xs mx-auto line-clamp-2">{oppFighter?.description}</p>
                 </div>
 
-                <div className="text-center text-xs text-purple-300 pt-4 border-t border-purple-500/20">
-                  Partner connected and choosing loadout.
+                <div className="flex items-center justify-center gap-2 text-xs text-emerald-300 pt-4 border-t border-purple-500/20">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span>Partner connected via Cross-Device Cloud Sync!</span>
                 </div>
               </>
             ) : (
-              <div className="text-center py-16 flex flex-col items-center justify-center">
-                <div className="w-20 h-20 rounded-full bg-purple-900/30 border-2 border-dashed border-purple-400/40 flex items-center justify-center mb-4 animate-pulse">
-                  <Swords className="w-8 h-8 text-purple-300" />
+              <div className="text-center py-8 flex flex-col items-center justify-center">
+                <div className="w-16 h-16 rounded-full bg-purple-900/30 border-2 border-dashed border-purple-400/40 flex items-center justify-center mb-3 animate-pulse">
+                  <Swords className="w-7 h-7 text-purple-300" />
                 </div>
                 <h4 className="text-lg font-black text-white mb-1">Waiting for Partner...</h4>
-                <p className="text-xs text-purple-300 max-w-xs mb-4">
-                  Share your secret code with your partner so they can join this 1v1 battle room!
+                <p className="text-xs text-purple-300 max-w-xs mb-3">
+                  Share your secret code with your partner on their mobile phone or PC:
                 </p>
-                <button
-                  onClick={handleCopyCode}
-                  className="px-4 py-2 rounded-xl bg-purple-900/60 border border-purple-400/40 text-purple-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition"
-                >
-                  <Copy className="w-4 h-4" />
-                  <span>{copiedCode ? 'Copied Code!' : 'Copy Code'}</span>
-                </button>
+
+                {secretCode && (
+                  <div className="mb-3 px-3 py-1 rounded-xl bg-slate-900/90 border border-pink-500/40 font-mono text-starlight font-black text-sm tracking-widest">
+                    {secretCode}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={handleCopyCode}
+                    className="px-3.5 py-1.5 rounded-xl bg-purple-900/60 border border-purple-400/40 text-purple-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedCode ? 'Copied Code!' : 'Copy Code'}</span>
+                  </button>
+                  <button
+                    onClick={handleCopyLink}
+                    className="px-3.5 py-1.5 rounded-xl bg-purple-900/60 border border-purple-400/40 text-purple-200 hover:text-white text-xs font-bold flex items-center gap-1.5 transition"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>{copiedLink ? 'Copied Link!' : 'Share Link'}</span>
+                  </button>
+                </div>
+
+                {/* Instant Play with AI Partner Bot Option */}
+                <div className="pt-3 border-t border-purple-500/20 w-full flex flex-col items-center">
+                  <span className="text-[11px] text-purple-400 font-bold mb-2">Want to practice right now?</span>
+                  <button
+                    onClick={addAIPartnerBot}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 via-teal-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg transition transform active:scale-95"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>🤖 Practice with AI Partner Bot</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
