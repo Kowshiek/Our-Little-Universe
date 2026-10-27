@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { api } from './api';
+import { BACKEND_URL } from '../config';
 
 export interface RemotePartnerState {
   userId: string;
@@ -66,7 +67,7 @@ class SocketService {
 
     this.currentUniverseId = universeId;
 
-    this.socket = io(window.location.origin, {
+    this.socket = io(BACKEND_URL || window.location.origin, {
       auth: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,

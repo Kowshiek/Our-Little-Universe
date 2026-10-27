@@ -1,3 +1,5 @@
+import { BACKEND_URL } from '../config';
+
 /**
  * Strict Online-Only Connectivity Checker
  * Actively probes backend availability, not just navigator.onLine.
@@ -79,7 +81,7 @@ class ConnectivityManager {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4500);
 
-      const response = await fetch('/api/health', {
+      const response = await fetch(`${BACKEND_URL}/api/health`, {
         method: 'GET',
         cache: 'no-store',
         signal: controller.signal,

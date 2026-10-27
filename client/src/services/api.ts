@@ -1,4 +1,5 @@
 import { connectivity } from './connectivity';
+import { BACKEND_URL } from '../config';
 
 export interface UserProfile {
   id: string;
@@ -123,7 +124,7 @@ class ApiService {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`/api${endpoint}`, {
+    const response = await fetch(`${BACKEND_URL}/api${endpoint}`, {
       ...options,
       headers,
     });
