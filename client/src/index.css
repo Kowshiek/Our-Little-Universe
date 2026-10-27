@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-cosmic-darkest text-slate-100 min-h-screen overflow-x-hidden;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #140e36;
+}
+::-webkit-scrollbar-thumb {
+  background: #3b2a7a;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #6d4bb8;
+}
+
+/* Cosmic glows & glassmorphism */
+.glass-panel {
+  background: rgba(26, 17, 60, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(244, 114, 182, 0.25);
+  box-shadow: 0 8px 32px 0 rgba(10, 6, 30, 0.5);
+}
+
+.glass-panel-subtle {
+  background: rgba(20, 14, 54, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(138, 101, 212, 0.2);
+}
+
+.cosmic-btn-primary {
+  @apply relative overflow-hidden bg-gradient-to-r from-pink-500 via-purple-600 to-indigo-600 hover:from-pink-400 hover:via-purple-500 hover:to-indigo-500 text-white font-bold py-3 px-6 rounded-2xl shadow-lg transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] border border-pink-300/30;
+}
+
+.cosmic-btn-secondary {
+  @apply relative overflow-hidden bg-slate-800/80 hover:bg-slate-700/80 text-purple-200 hover:text-white font-bold py-3 px-6 rounded-2xl border border-purple-500/30 transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98];
+}
+
+/* Twinkling star animation background */
+.cosmic-stars {
+  background-image: 
+    radial-gradient(1px 1px at 25px 35px, #ffffff, rgba(255, 255, 255, 0)),
+    radial-gradient(1.5px 1.5px at 60px 80px, #fbcfe8, rgba(255, 255, 255, 0)),
+    radial-gradient(2px 2px at 120px 40px, #ffd166, rgba(255, 255, 255, 0)),
+    radial-gradient(1px 1px at 190px 140px, #a78bfa, rgba(255, 255, 255, 0)),
+    radial-gradient(2px 2px at 250px 220px, #f472b6, rgba(255, 255, 255, 0));
+  background-repeat: repeat;
+  background-size: 300px 300px;
+}

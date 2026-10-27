@@ -1,0 +1,27 @@
+{
+  "name": "our-little-universe",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Our Little Universe - Full-Stack Online Multiplayer Game for Couples",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev:server": "npm --workspace=server run dev",
+    "dev:client": "npm --workspace=client run dev",
+    "dev": "npm run dev:server",
+    "build": "npm --workspace=server run build && npm --workspace=client run build",
+    "test": "node server/test/e2e.js",
+    "start": "npm --workspace=server run start"
+  },
+  "keywords": [
+    "multiplayer",
+    "phaser3",
+    "react",
+    "couples-game",
+    "socketio"
+  ],
+  "author": "Antigravity",
+  "license": "MIT"
+}
