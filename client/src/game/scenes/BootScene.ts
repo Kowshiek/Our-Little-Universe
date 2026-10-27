@@ -6,252 +6,321 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
-    // Generate all vector and canvas textures procedurally for zero asset-loading lag
     this.createProceduralTextures();
   }
 
   create() {
-    this.scene.start('PlanetScene');
+    this.scene.start('BattleScene');
   }
 
   private createProceduralTextures() {
-    // 1. Cosmic Grass Tile (64x64)
-    const grassGfx = this.make.graphics({ x: 0, y: 0 });
-    grassGfx.fillStyle(0x27174e, 1);
-    grassGfx.fillRect(0, 0, 64, 64);
-    // Add subtle stardust speckles
-    grassGfx.fillStyle(0x3e2675, 1);
-    grassGfx.fillRect(8, 12, 4, 4);
-    grassGfx.fillRect(40, 36, 4, 4);
-    grassGfx.fillRect(24, 52, 4, 4);
-    grassGfx.fillStyle(0xa78bfa, 0.4);
-    grassGfx.fillCircle(18, 20, 2);
-    grassGfx.fillCircle(50, 48, 2);
-    grassGfx.generateTexture('tile_grass', 64, 64);
-    grassGfx.destroy();
+    // -------------------------------------------------------------
+    // 1. HEART KNIGHT SPRITES (Armored Crusader with Greatsword)
+    // -------------------------------------------------------------
+    // Idle (48x64)
+    const hkIdle = this.make.graphics({ x: 0, y: 0 });
+    hkIdle.fillStyle(0x0a061c, 0.4);
+    hkIdle.fillEllipse(24, 60, 20, 6); // shadow
+    // Body Armor (Silver-Pink)
+    hkIdle.fillStyle(0x372352, 1);
+    hkIdle.fillRoundedRect(14, 24, 20, 26, 4);
+    hkIdle.fillStyle(0xff2a85, 1);
+    hkIdle.fillCircle(24, 32, 6); // Glowing heart chestplate
+    // Helmet
+    hkIdle.fillStyle(0x4c3370, 1);
+    hkIdle.fillRoundedRect(16, 10, 16, 16, 4);
+    hkIdle.fillStyle(0xff2a85, 1);
+    hkIdle.fillRect(18, 16, 12, 4); // Glowing pink visor slit
+    // Wings on Helmet
+    hkIdle.fillStyle(0xff70a6, 1);
+    hkIdle.fillTriangle(14, 12, 10, 4, 16, 10);
+    hkIdle.fillTriangle(34, 12, 38, 4, 32, 10);
+    // Greatsword on back/hand
+    hkIdle.fillStyle(0xe2e8f0, 1);
+    hkIdle.fillRect(36, 14, 5, 34);
+    hkIdle.fillStyle(0xff2a85, 1);
+    hkIdle.fillCircle(38, 12, 4); // Heart pommel
+    // Legs
+    hkIdle.fillStyle(0x271740, 1);
+    hkIdle.fillRect(16, 48, 6, 12);
+    hkIdle.fillRect(26, 48, 6, 12);
+    hkIdle.generateTexture('heart_knight_idle', 48, 64);
+    hkIdle.destroy();
 
-    // 2. Cosmic Void / Water Tile (64x64)
-    const voidGfx = this.make.graphics({ x: 0, y: 0 });
-    voidGfx.fillStyle(0x0a061c, 1);
-    voidGfx.fillRect(0, 0, 64, 64);
-    voidGfx.fillStyle(0x1a103c, 0.6);
-    voidGfx.fillCircle(32, 32, 24);
-    voidGfx.fillStyle(0x38bdf8, 0.3);
-    voidGfx.fillCircle(20, 20, 1.5);
-    voidGfx.fillCircle(45, 40, 2);
-    voidGfx.generateTexture('tile_void', 64, 64);
-    voidGfx.destroy();
+    // Attack (64x64)
+    const hkAtk = this.make.graphics({ x: 0, y: 0 });
+    hkAtk.fillStyle(0x0a061c, 0.4);
+    hkAtk.fillEllipse(24, 60, 22, 6);
+    hkAtk.fillStyle(0x372352, 1);
+    hkAtk.fillRoundedRect(12, 24, 22, 26, 4);
+    hkAtk.fillStyle(0xff2a85, 1);
+    hkAtk.fillCircle(22, 32, 6);
+    hkAtk.fillStyle(0x4c3370, 1);
+    hkAtk.fillRoundedRect(15, 10, 16, 16, 4);
+    hkAtk.fillStyle(0xff2a85, 1);
+    hkAtk.fillRect(18, 16, 12, 4);
+    // Sweeping Sword Arc (Forward Slash)
+    hkAtk.lineStyle(4, 0xff2a85, 0.9);
+    hkAtk.beginPath();
+    hkAtk.arc(28, 30, 28, -Math.PI / 3, Math.PI / 4, false);
+    hkAtk.strokePath();
+    hkAtk.fillStyle(0xffffff, 1);
+    hkAtk.fillRect(34, 24, 24, 6); // Blade thrust
+    hkAtk.fillStyle(0x271740, 1);
+    hkAtk.fillRect(12, 48, 8, 12);
+    hkAtk.fillRect(24, 48, 8, 12);
+    hkAtk.generateTexture('heart_knight_attack', 64, 64);
+    hkAtk.destroy();
 
-    // 3. Cute Celestial Cottage (96x96)
-    const homeGfx = this.make.graphics({ x: 0, y: 0 });
-    // House base
-    homeGfx.fillStyle(0x3b256d, 1);
-    homeGfx.fillRoundedRect(16, 36, 64, 52, 6);
-    // Roof (Cosmic Pink)
-    homeGfx.fillStyle(0xec4899, 1);
-    homeGfx.fillTriangle(10, 38, 48, 8, 86, 38);
-    // Roof trim
-    homeGfx.lineStyle(3, 0xf472b6, 1);
-    homeGfx.strokeTriangle(10, 38, 48, 8, 86, 38);
-    // Door
-    homeGfx.fillStyle(0x1e123a, 1);
-    homeGfx.fillRoundedRect(38, 54, 20, 34, 4);
-    // Door knob (Gold)
-    homeGfx.fillStyle(0xffd166, 1);
-    homeGfx.fillCircle(54, 72, 2.5);
-    // Glowing Windows
-    homeGfx.fillStyle(0xfff3b0, 0.9);
-    homeGfx.fillRoundedRect(22, 48, 12, 14, 2);
-    homeGfx.fillRoundedRect(62, 48, 12, 14, 2);
-    // Chimney with heart puff
-    homeGfx.fillStyle(0x4c2f8a, 1);
-    homeGfx.fillRect(66, 14, 10, 18);
-    homeGfx.fillStyle(0xfbcfe8, 0.8);
-    homeGfx.fillCircle(71, 8, 4);
-    homeGfx.fillCircle(74, 3, 3);
-    homeGfx.generateTexture('cottage', 96, 96);
-    homeGfx.destroy();
+    // Block (48x64)
+    const hkBlock = this.make.graphics({ x: 0, y: 0 });
+    hkBlock.fillStyle(0x0a061c, 0.4);
+    hkBlock.fillEllipse(24, 60, 20, 6);
+    hkBlock.fillStyle(0x2d1c44, 1);
+    hkBlock.fillRoundedRect(10, 26, 18, 24, 4);
+    // Big Heart Shield in front
+    hkBlock.fillStyle(0xff2a85, 1);
+    hkBlock.fillCircle(28, 28, 10);
+    hkBlock.fillCircle(38, 28, 10);
+    hkBlock.fillTriangle(19, 31, 47, 31, 33, 50);
+    hkBlock.lineStyle(2, 0xffffff, 0.8);
+    hkBlock.strokeCircle(33, 35, 14);
+    hkBlock.generateTexture('heart_knight_block', 48, 64);
+    hkBlock.destroy();
 
-    // 4. Cherry Blossom Tree (64x80)
-    const treeGfx = this.make.graphics({ x: 0, y: 0 });
-    // Trunk
-    treeGfx.fillStyle(0x382218, 1);
-    treeGfx.fillRect(28, 44, 8, 32);
-    // Foliage clusters (Pink lavender clouds)
-    treeGfx.fillStyle(0xf472b6, 0.95);
-    treeGfx.fillCircle(32, 28, 22);
-    treeGfx.fillStyle(0xfbcfe8, 0.9);
-    treeGfx.fillCircle(22, 34, 16);
-    treeGfx.fillCircle(42, 34, 16);
-    treeGfx.fillStyle(0xffe4e6, 0.95);
-    treeGfx.fillCircle(32, 20, 14);
-    treeGfx.generateTexture('cherry_blossom', 64, 80);
-    treeGfx.destroy();
+    // Heartwave Projectile (36x24)
+    const waveGfx = this.make.graphics({ x: 0, y: 0 });
+    waveGfx.fillStyle(0xff2a85, 0.95);
+    waveGfx.fillCircle(18, 12, 11);
+    waveGfx.fillStyle(0xffffff, 1);
+    waveGfx.fillCircle(22, 12, 6);
+    waveGfx.lineStyle(3, 0xff70a6, 0.9);
+    waveGfx.strokeCircle(18, 12, 11);
+    waveGfx.generateTexture('heartwave_projectile', 36, 24);
+    waveGfx.destroy();
 
-    // 5. Starlight Lamp (32x56)
-    const lampGfx = this.make.graphics({ x: 0, y: 0 });
-    lampGfx.fillStyle(0x4a3b68, 1);
-    lampGfx.fillRect(14, 20, 4, 34);
-    lampGfx.fillCircle(16, 54, 6);
-    // Glowing Lantern head
-    lampGfx.fillStyle(0xffd166, 1);
-    lampGfx.fillCircle(16, 16, 10);
-    lampGfx.fillStyle(0xffffff, 0.8);
-    lampGfx.fillCircle(16, 16, 5);
-    lampGfx.generateTexture('crystal_lamp', 32, 56);
-    lampGfx.destroy();
+    // -------------------------------------------------------------
+    // 2. CUPID SPARK SPRITES (Golden Angelic Archer)
+    // -------------------------------------------------------------
+    // Idle (48x64)
+    const csIdle = this.make.graphics({ x: 0, y: 0 });
+    csIdle.fillStyle(0x0a061c, 0.4);
+    csIdle.fillEllipse(24, 60, 18, 5);
+    // Angel Wings
+    csIdle.fillStyle(0xffffff, 0.85);
+    csIdle.fillTriangle(14, 20, 4, 10, 14, 34);
+    csIdle.fillTriangle(30, 20, 40, 10, 30, 34);
+    // Golden Halo
+    csIdle.lineStyle(2, 0xffd166, 1);
+    csIdle.strokeCircle(24, 8, 8);
+    // Body & Tunic (Gold/Cyan)
+    csIdle.fillStyle(0xf1f5f9, 1);
+    csIdle.fillRoundedRect(16, 22, 16, 26, 4);
+    csIdle.fillStyle(0xffd166, 1);
+    csIdle.fillRect(16, 34, 16, 4); // Golden sash
+    // Head & Blonde Hair
+    csIdle.fillStyle(0xffd166, 1);
+    csIdle.fillCircle(24, 16, 8);
+    // Heart Bow in hand
+    csIdle.lineStyle(3, 0xffd166, 1);
+    csIdle.beginPath();
+    csIdle.arc(36, 28, 12, -Math.PI / 2, Math.PI / 2, false);
+    csIdle.strokePath();
+    csIdle.generateTexture('cupid_spark_idle', 48, 64);
+    csIdle.destroy();
 
-    // 6. Wooden Love Bench (48x32)
-    const benchGfx = this.make.graphics({ x: 0, y: 0 });
-    benchGfx.fillStyle(0x5c3a21, 1);
-    benchGfx.fillRoundedRect(4, 10, 40, 12, 3); // seat
-    benchGfx.fillRect(8, 22, 4, 8); // legs
-    benchGfx.fillRect(36, 22, 4, 8);
-    // Heart backrest
-    benchGfx.fillStyle(0x784c28, 1);
-    benchGfx.fillRect(6, 4, 36, 6);
-    benchGfx.fillStyle(0xf472b6, 1);
-    benchGfx.fillCircle(24, 7, 3);
-    benchGfx.generateTexture('wooden_bench', 48, 32);
-    benchGfx.destroy();
+    // Attack (64x64)
+    const csAtk = this.make.graphics({ x: 0, y: 0 });
+    csAtk.fillStyle(0x0a061c, 0.4);
+    csAtk.fillEllipse(24, 60, 20, 5);
+    csAtk.fillStyle(0xffffff, 0.9);
+    csAtk.fillTriangle(12, 18, 2, 8, 12, 34);
+    csAtk.fillStyle(0xf1f5f9, 1);
+    csAtk.fillRoundedRect(14, 22, 18, 26, 4);
+    csAtk.fillStyle(0xffd166, 1);
+    csAtk.fillCircle(22, 16, 8);
+    // Drawn Bow & Arrow
+    csAtk.lineStyle(3, 0xffd166, 1);
+    csAtk.strokeCircle(36, 28, 12);
+    csAtk.fillStyle(0x38bdf8, 1);
+    csAtk.fillRect(30, 26, 28, 4); // Arrow shaft
+    csAtk.fillStyle(0xff2a85, 1);
+    csAtk.fillCircle(58, 28, 5); // Heart arrowhead
+    csAtk.generateTexture('cupid_spark_attack', 64, 64);
+    csAtk.destroy();
 
-    // 7. Star Fountain (56x56)
-    const fountGfx = this.make.graphics({ x: 0, y: 0 });
-    fountGfx.fillStyle(0x473b6b, 1);
-    fountGfx.fillCircle(28, 32, 24);
-    fountGfx.fillStyle(0x38bdf8, 0.85); // glowing water
-    fountGfx.fillCircle(28, 32, 18);
-    // Center star pedestal
-    fountGfx.fillStyle(0xffd166, 1);
-    fountGfx.fillCircle(28, 32, 7);
-    fountGfx.generateTexture('star_fountain', 56, 56);
-    fountGfx.destroy();
+    // Block (48x64)
+    const csBlock = this.make.graphics({ x: 0, y: 0 });
+    csBlock.fillStyle(0x0a061c, 0.4);
+    csBlock.fillEllipse(24, 60, 18, 5);
+    csBlock.fillStyle(0xffffff, 0.95);
+    // Wing Guard folded in front
+    csBlock.fillRoundedRect(18, 14, 22, 38, 8);
+    csBlock.lineStyle(2, 0xffd166, 0.9);
+    csBlock.strokeRoundedRect(18, 14, 22, 38, 8);
+    csBlock.generateTexture('cupid_spark_block', 48, 64);
+    csBlock.destroy();
 
-    // 8. Cosmic Flower (24x24)
-    const flowerGfx = this.make.graphics({ x: 0, y: 0 });
-    flowerGfx.fillStyle(0x34d399, 1);
-    flowerGfx.fillRect(11, 14, 2, 8);
-    flowerGfx.fillStyle(0xf472b6, 1);
-    flowerGfx.fillCircle(12, 10, 6);
-    flowerGfx.fillStyle(0xffd166, 1);
-    flowerGfx.fillCircle(12, 10, 2.5);
-    flowerGfx.generateTexture('cosmic_flower', 24, 24);
-    flowerGfx.destroy();
+    // Love Arrow Projectile (32x16)
+    const arrowGfx = this.make.graphics({ x: 0, y: 0 });
+    arrowGfx.fillStyle(0xffd166, 1);
+    arrowGfx.fillRect(2, 6, 22, 4);
+    arrowGfx.fillStyle(0xff2a85, 1);
+    arrowGfx.fillCircle(26, 8, 6);
+    arrowGfx.fillStyle(0xffffff, 1);
+    arrowGfx.fillCircle(28, 8, 2.5);
+    arrowGfx.generateTexture('love_arrow_projectile', 32, 16);
+    arrowGfx.destroy();
 
-    // 9. Heart Monument (64x72)
-    const monuGfx = this.make.graphics({ x: 0, y: 0 });
-    monuGfx.fillStyle(0x3b2a5c, 1);
-    monuGfx.fillRoundedRect(12, 48, 40, 20, 4); // pedestal
-    // Golden wings / base
-    monuGfx.fillStyle(0xffd166, 1);
-    monuGfx.fillCircle(32, 46, 8);
-    // Glowing cosmic heart gem
-    monuGfx.fillStyle(0xec4899, 1);
-    monuGfx.fillCircle(24, 24, 12);
-    monuGfx.fillCircle(40, 24, 12);
-    monuGfx.fillTriangle(13, 27, 51, 27, 32, 44);
-    monuGfx.generateTexture('heart_monument', 64, 72);
-    monuGfx.destroy();
+    // -------------------------------------------------------------
+    // 3. SHADOW VALENTINE SPRITES (Enigmatic Violet Rogue)
+    // -------------------------------------------------------------
+    // Idle (48x64)
+    const svIdle = this.make.graphics({ x: 0, y: 0 });
+    svIdle.fillStyle(0x0a061c, 0.4);
+    svIdle.fillEllipse(24, 60, 18, 5);
+    // Flowing Violet Cloak
+    svIdle.fillStyle(0x1e1035, 1);
+    svIdle.fillRoundedRect(12, 18, 22, 36, 6);
+    svIdle.fillStyle(0xa855f7, 0.8);
+    svIdle.fillTriangle(14, 18, 6, 48, 14, 52); // Cloak tail
+    // Masked Head
+    svIdle.fillStyle(0x2d174d, 1);
+    svIdle.fillCircle(24, 15, 8);
+    svIdle.fillStyle(0xa855f7, 1);
+    svIdle.fillRect(20, 13, 8, 3); // Violet eye visor
+    // Dual Daggers
+    svIdle.fillStyle(0xe2e8f0, 1);
+    svIdle.fillRect(10, 30, 4, 16);
+    svIdle.fillRect(34, 30, 4, 16);
+    svIdle.fillStyle(0xff2a85, 1);
+    svIdle.fillCircle(12, 28, 3);
+    svIdle.fillCircle(36, 28, 3);
+    svIdle.generateTexture('shadow_valentine_idle', 48, 64);
+    svIdle.destroy();
 
-    // 10. Ancient Stargate Portal (72x72)
-    const portalGfx = this.make.graphics({ x: 0, y: 0 });
-    portalGfx.fillStyle(0x1e143f, 1);
-    portalGfx.fillCircle(36, 36, 32);
-    portalGfx.lineStyle(4, 0x8a65d4, 1);
-    portalGfx.strokeCircle(36, 36, 30);
-    portalGfx.lineStyle(2, 0x38bdf8, 0.8);
-    portalGfx.strokeCircle(36, 36, 22);
-    portalGfx.fillStyle(0x6366f1, 0.85);
-    portalGfx.fillCircle(36, 36, 16);
-    portalGfx.fillStyle(0xffffff, 0.95);
-    portalGfx.fillCircle(36, 36, 5);
-    portalGfx.generateTexture('ancient_portal', 72, 72);
-    portalGfx.destroy();
+    // Attack (64x64)
+    const svAtk = this.make.graphics({ x: 0, y: 0 });
+    svAtk.fillStyle(0x0a061c, 0.4);
+    svAtk.fillEllipse(24, 60, 20, 5);
+    svAtk.fillStyle(0x1e1035, 1);
+    svAtk.fillRoundedRect(12, 18, 22, 36, 6);
+    svAtk.fillStyle(0x2d174d, 1);
+    svAtk.fillCircle(24, 15, 8);
+    // Dagger X-Slash
+    svAtk.lineStyle(4, 0xa855f7, 1);
+    svAtk.beginPath();
+    svAtk.moveTo(28, 16);
+    svAtk.lineTo(54, 42);
+    svAtk.moveTo(28, 42);
+    svAtk.lineTo(54, 16);
+    svAtk.strokePath();
+    svAtk.generateTexture('shadow_valentine_attack', 64, 64);
+    svAtk.destroy();
 
-    // 11. Collectible Magical Star (32x32)
-    const starGfx = this.make.graphics({ x: 0, y: 0 });
-    starGfx.fillStyle(0xffd166, 1);
-    // Draw 5-pointed star
-    const points = [];
-    for (let i = 0; i < 10; i++) {
-      const radius = i % 2 === 0 ? 14 : 6;
-      const angle = (i * Math.PI) / 5 - Math.PI / 2;
-      points.push(16 + radius * Math.cos(angle), 16 + radius * Math.sin(angle));
+    // Block (48x64)
+    const svBlock = this.make.graphics({ x: 0, y: 0 });
+    svBlock.fillStyle(0x0a061c, 0.4);
+    svBlock.fillEllipse(24, 60, 18, 5);
+    svBlock.fillStyle(0x1e1035, 1);
+    svBlock.fillRoundedRect(12, 20, 20, 34, 4);
+    // Crossed Daggers
+    svBlock.lineStyle(3, 0xa855f7, 1);
+    svBlock.beginPath();
+    svBlock.moveTo(20, 20);
+    svBlock.lineTo(32, 40);
+    svBlock.moveTo(32, 20);
+    svBlock.lineTo(20, 40);
+    svBlock.strokePath();
+    svBlock.generateTexture('shadow_valentine_block', 48, 64);
+    svBlock.destroy();
+
+    // -------------------------------------------------------------
+    // 4. CRYSTAL ROSE SPRITES (Diamond Guardian)
+    // -------------------------------------------------------------
+    // Idle (48x64)
+    const crIdle = this.make.graphics({ x: 0, y: 0 });
+    crIdle.fillStyle(0x0a061c, 0.4);
+    crIdle.fillEllipse(24, 60, 20, 6);
+    // Diamond Gown / Armor
+    crIdle.fillStyle(0x0f2b48, 1);
+    crIdle.fillRoundedRect(14, 22, 20, 30, 4);
+    crIdle.fillStyle(0x38bdf8, 1);
+    crIdle.fillCircle(24, 30, 6); // Cyan crystal gem
+    // Crown with rose
+    crIdle.fillStyle(0x38bdf8, 1);
+    crIdle.fillCircle(24, 15, 8);
+    crIdle.fillStyle(0x34d399, 1);
+    crIdle.fillCircle(24, 8, 4); // Emerald rose bud
+    // Crystal Rose Shield
+    crIdle.fillStyle(0x38bdf8, 0.85);
+    crIdle.fillTriangle(34, 20, 44, 32, 34, 44);
+    crIdle.fillTriangle(34, 20, 24, 32, 34, 44);
+    crIdle.generateTexture('crystal_rose_idle', 48, 64);
+    crIdle.destroy();
+
+    // Attack (64x64)
+    const crAtk = this.make.graphics({ x: 0, y: 0 });
+    crAtk.fillStyle(0x0a061c, 0.4);
+    crAtk.fillEllipse(24, 60, 22, 6);
+    crAtk.fillStyle(0x0f2b48, 1);
+    crAtk.fillRoundedRect(14, 22, 20, 30, 4);
+    crAtk.fillStyle(0x38bdf8, 1);
+    crAtk.fillCircle(24, 15, 8);
+    // Crystal Shield Slam & Spikes
+    crAtk.fillStyle(0x38bdf8, 1);
+    crAtk.fillRoundedRect(34, 18, 18, 28, 4);
+    crAtk.fillTriangle(52, 22, 60, 26, 52, 30);
+    crAtk.fillTriangle(52, 32, 60, 36, 52, 40);
+    crAtk.generateTexture('crystal_rose_attack', 64, 64);
+    crAtk.destroy();
+
+    // Block (48x64)
+    const crBlock = this.make.graphics({ x: 0, y: 0 });
+    crBlock.fillStyle(0x0a061c, 0.4);
+    crBlock.fillEllipse(24, 60, 22, 6);
+    // Giant Full Diamond Barrier
+    crBlock.fillStyle(0x38bdf8, 0.8);
+    crBlock.fillRoundedRect(16, 10, 28, 48, 8);
+    crBlock.lineStyle(3, 0xffffff, 0.9);
+    crBlock.strokeRoundedRect(16, 10, 28, 48, 8);
+    crBlock.generateTexture('crystal_rose_block', 48, 64);
+    crBlock.destroy();
+
+    // Thorn Eruption (48x36)
+    const thornGfx = this.make.graphics({ x: 0, y: 0 });
+    thornGfx.fillStyle(0x38bdf8, 0.95);
+    thornGfx.fillTriangle(12, 36, 24, 2, 36, 36);
+    thornGfx.fillTriangle(2, 36, 12, 12, 22, 36);
+    thornGfx.fillTriangle(26, 36, 36, 12, 46, 36);
+    thornGfx.generateTexture('thorn_projectile', 48, 36);
+    thornGfx.destroy();
+
+    // -------------------------------------------------------------
+    // 5. ARENA BACKGROUND & PLATFORM TEXTURES
+    // -------------------------------------------------------------
+    // Ground Platform (960x40)
+    const platGfx = this.make.graphics({ x: 0, y: 0 });
+    platGfx.fillStyle(0x1a1036, 1);
+    platGfx.fillRect(0, 0, 960, 40);
+    platGfx.fillStyle(0xff2a85, 0.8);
+    platGfx.fillRect(0, 0, 960, 3); // Neon pink rim
+    platGfx.fillStyle(0x8a65d4, 0.4);
+    for (let i = 0; i < 960; i += 32) {
+      platGfx.fillRect(i, 8, 2, 24);
     }
-    starGfx.fillPoints(points, true);
-    starGfx.fillStyle(0xffffff, 0.9);
-    starGfx.fillCircle(16, 16, 3.5);
-    starGfx.generateTexture('magical_star', 32, 32);
-    starGfx.destroy();
+    platGfx.generateTexture('arena_ground', 960, 40);
+    platGfx.destroy();
 
-    // 12. Explorer Character Sprite (36x44)
-    const charGfx = this.make.graphics({ x: 0, y: 0 });
-    // Shadow
-    charGfx.fillStyle(0x0a061c, 0.4);
-    charGfx.fillEllipse(18, 41, 14, 5);
-    // Body (White space suit)
-    charGfx.fillStyle(0xe2e8f0, 1);
-    charGfx.fillRoundedRect(8, 16, 20, 22, 6);
-    // Backpack (Oxygen tank / jetpack)
-    charGfx.fillStyle(0x94a3b8, 1);
-    charGfx.fillRoundedRect(3, 18, 5, 14, 2);
-    // Helmet (Cute round helmet)
-    charGfx.fillStyle(0xf8fafc, 1);
-    charGfx.fillCircle(18, 14, 11);
-    // Visor (Shiny dark indigo)
-    charGfx.fillStyle(0x1e1b4b, 1);
-    charGfx.fillRoundedRect(11, 9, 14, 8, 3);
-    // Visor reflection (cyan gleam)
-    charGfx.fillStyle(0x38bdf8, 0.9);
-    charGfx.fillCircle(14, 12, 1.8);
-    // Feet
-    charGfx.fillStyle(0x64748b, 1);
-    charGfx.fillRoundedRect(9, 36, 7, 6, 2);
-    charGfx.fillRoundedRect(20, 36, 7, 6, 2);
-    charGfx.generateTexture('explorer_char', 36, 44);
-    charGfx.destroy();
+    // Heart Clash Spark (40x40)
+    const clashGfx = this.make.graphics({ x: 0, y: 0 });
+    clashGfx.fillStyle(0xff2a85, 1);
+    clashGfx.fillCircle(20, 20, 16);
+    clashGfx.fillStyle(0xffffff, 1);
+    clashGfx.fillCircle(20, 20, 8);
+    clashGfx.generateTexture('spark_clash', 40, 40);
+    clashGfx.destroy();
 
-    // 13. Starlight Golem Boss (96x110)
-    const bossGfx = this.make.graphics({ x: 0, y: 0 });
-    // Shadow
-    bossGfx.fillStyle(0x0a061c, 0.5);
-    bossGfx.fillEllipse(48, 102, 36, 10);
-    // Stone Body
-    bossGfx.fillStyle(0x2d224d, 1);
-    bossGfx.fillRoundedRect(22, 30, 52, 58, 12);
-    // Glowing Core (Celestial heart)
-    bossGfx.fillStyle(0xf472b6, 1);
-    bossGfx.fillCircle(48, 56, 14);
-    bossGfx.fillStyle(0xffffff, 0.9);
-    bossGfx.fillCircle(48, 56, 6);
-    // Stone Shoulders & Fists
-    bossGfx.fillStyle(0x433270, 1);
-    bossGfx.fillCircle(16, 42, 14);
-    bossGfx.fillCircle(80, 42, 14);
-    bossGfx.fillCircle(14, 76, 12);
-    bossGfx.fillCircle(82, 76, 12);
-    // Head & Glowing Eyes
-    bossGfx.fillStyle(0x382961, 1);
-    bossGfx.fillRoundedRect(30, 10, 36, 24, 6);
-    bossGfx.fillStyle(0xffd166, 1);
-    bossGfx.fillCircle(40, 20, 3);
-    bossGfx.fillCircle(56, 20, 3);
-    // Celestial Horns / Crown
-    bossGfx.fillStyle(0x8a65d4, 1);
-    bossGfx.fillTriangle(32, 12, 36, 2, 40, 12);
-    bossGfx.fillTriangle(56, 12, 60, 2, 64, 12);
-    bossGfx.generateTexture('starlight_golem', 96, 110);
-    bossGfx.destroy();
-
-    // 14. Attack projectile / stardust bullet (16x16)
-    const projGfx = this.make.graphics({ x: 0, y: 0 });
-    projGfx.fillStyle(0xf472b6, 1);
-    projGfx.fillCircle(8, 8, 6);
-    projGfx.fillStyle(0xffffff, 1);
-    projGfx.fillCircle(8, 8, 3);
-    projGfx.generateTexture('star_projectile', 16, 16);
-    projGfx.destroy();
-
-    console.log('🌌 Procedural textures generated in BootScene');
+    console.log('❤️🔥 Love Battle procedural fighter textures generated.');
   }
 }

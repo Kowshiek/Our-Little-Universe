@@ -1,4 +1,4 @@
-import { BACKEND_URL } from '../config';
+import { getBackendUrl } from '../config';
 
 /**
  * Strict Online-Only Connectivity Checker
@@ -81,7 +81,8 @@ class ConnectivityManager {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4500);
 
-      const response = await fetch(`${BACKEND_URL}/api/health`, {
+      const backendUrl = getBackendUrl();
+      const response = await fetch(`${backendUrl}/api/health`, {
         method: 'GET',
         cache: 'no-store',
         signal: controller.signal,
@@ -90,14 +91,38 @@ class ConnectivityManager {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        const latency = Math.round(performance.now() - startTime);
-        this.updateState({
-          isOnline: true,
-          isBackendReachable: true,
-          latencyMs: latency,
-          errorMessage: undefined,
-        });
-        return true;
+        // Validate that response is genuinely JSON from Our Little Universe backend,
+        // and NOT a static HTML rewrite from Vercel!
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          this.updateState({
+            isOnline: true,
+            isBackendReachable: false,
+            latencyMs: null,
+            errorMessage: 'Backend server not connected. Please connect your backend server URL.',
+          });
+          return false;
+        }
+
+        const data = await response.json().catch(() => ({}));
+        if (data.status === 'online' && data.game === 'Our Little Universe') {
+          const latency = Math.round(performance.now() - startTime);
+          this.updateState({
+            isOnline: true,
+            isBackendReachable: true,
+            latencyMs: latency,
+            errorMessage: undefined,
+          });
+          return true;
+        } else {
+          this.updateState({
+            isOnline: true,
+            isBackendReachable: false,
+            latencyMs: null,
+            errorMessage: 'Unrecognized server response. Please verify backend URL.',
+          });
+          return false;
+        }
       } else {
         this.updateState({
           isOnline: true,

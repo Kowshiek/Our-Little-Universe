@@ -1,34 +1,19 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import { verifyToken, getUserById } from '../auth/authService.js';
-import { GameSaveService } from '../services/gameSaveService.js';
+import { verifyToken, getUserById, checkCodeRateLimit, resetCodeRateLimit, generateSecretCode, hashSecretCode } from '../auth/authService.js';
 import { db } from '../db/database.js';
+import { BattleEngine } from '../game/battleEngine.js';
+import { FighterId, ArenaId, FIGHTERS } from '../game/combatTypes.js';
+import { v4 as uuidv4 } from 'uuid';
 
-interface AuthenticatedSocket extends Socket {
+interface BattleSocket extends Socket {
   userId?: string;
-  universeId?: string;
   displayName?: string;
-  avatarColor?: string;
-  avatarStyle?: string;
+  currentRoomId?: string;
 }
-
-// In-memory boss state per universe arena
-interface BossState {
-  health: number;
-  maxHealth: number;
-  phase: number;
-  isAlive: boolean;
-  targetUserId?: string;
-  lastAttackTime: number;
-}
-
-const universeBosses = new Map<string, BossState>();
-
-// Active star pickups currently spawned per universe
-const universeStars = new Map<string, Set<number>>();
 
 export function setupSocketHandlers(io: SocketIOServer) {
-  // Socket.IO authentication middleware
-  io.use((socket: AuthenticatedSocket, next) => {
+  // Authentication middleware
+  io.use((socket: BattleSocket, next) => {
     const token = socket.handshake.auth.token || socket.handshake.query.token;
     if (!token || typeof token !== 'string') {
       return next(new Error('Authentication token required'));
@@ -46,262 +31,338 @@ export function setupSocketHandlers(io: SocketIOServer) {
 
     socket.userId = user.id;
     socket.displayName = user.displayName;
-    socket.avatarColor = user.avatarColor || '#ec4899';
-    socket.avatarStyle = user.avatarStyle || 'starlight';
     next();
   });
 
-  io.on('connection', (socket: AuthenticatedSocket) => {
+  io.on('connection', (socket: BattleSocket) => {
     const userId = socket.userId!;
     const displayName = socket.displayName!;
 
-    console.log(`🔌 Player connected: ${displayName} (${userId})`);
+    console.log(`⚔️ Fighter connected: ${displayName} (${userId})`);
 
     /**
-     * Join Universe Room
+     * Create Private Battle Room
      */
-    socket.on('join_universe', ({ universeId }: { universeId: string }) => {
+    socket.on('create_room', ({ arenaId = 'heart_garden' }: { arenaId?: ArenaId }) => {
       try {
-        if (!GameSaveService.isUniverseMember(universeId, userId)) {
-          socket.emit('error', { message: 'Unauthorized universe access' });
-          return;
-        }
+        const roomId = uuidv4();
+        const { code, codeHash } = generateSecretCode();
 
-        socket.universeId = universeId;
-        const roomName = `universe:${universeId}`;
-        socket.join(roomName);
+        db.prepare(`
+          INSERT INTO private_rooms (id, code_hash, display_code, owner_id, arena_id, status)
+          VALUES (?, ?, ?, ?, ?, 'waiting')
+        `).run(roomId, codeHash, code, userId);
 
-        // Initialize boss state if not yet created
-        if (!universeBosses.has(universeId)) {
-          const uState = db.prepare(`SELECT boss_defeated FROM universe_states WHERE universe_id = ?`).get(universeId) as any;
-          universeBosses.set(universeId, {
-            health: uState?.boss_defeated ? 0 : 300,
-            maxHealth: 300,
-            phase: 1,
-            isAlive: !uState?.boss_defeated,
-            lastAttackTime: Date.now(),
-          });
-        }
+        db.prepare(`
+          INSERT INTO room_members (id, room_id, user_id, fighter_id, role, is_ready)
+          VALUES (?, ?, ?, 'heart_knight', 'owner', 0)
+        `).run(uuidv4(), roomId, userId);
 
-        // Initialize spawned stars if not set (ids 1 to 5)
-        if (!universeStars.has(universeId)) {
-          universeStars.set(universeId, new Set([1, 2, 3, 4, 5]));
-        }
+        socket.currentRoomId = roomId;
+        socket.join(`room:${roomId}`);
 
-        // Notify partner that player has entered the universe
-        socket.to(roomName).emit('partner_joined', {
-          userId,
-          displayName,
-          avatarColor: socket.avatarColor,
-          avatarStyle: socket.avatarStyle,
-          timestamp: Date.now(),
+        socket.emit('room_created', {
+          roomId,
+          secretCode: code,
+          arenaId,
+          role: 'owner',
+          opponent: null,
         });
 
-        // Let the joining player know partner presence
-        const roomSockets = io.sockets.adapter.rooms.get(roomName);
-        const partnerIsPresent = (roomSockets ? roomSockets.size : 0) > 1;
-
-        socket.emit('universe_joined', {
-          universeId,
-          partnerPresent: partnerIsPresent,
-          activeStars: Array.from(universeStars.get(universeId) || []),
-          bossState: universeBosses.get(universeId),
-        });
-
-        console.log(`✨ Player ${displayName} joined universe room ${universeId}. Active: ${roomSockets?.size || 1}`);
+        console.log(`❤️ Room created: ${roomId} with code ${code} by ${displayName}`);
       } catch (err: any) {
         socket.emit('error', { message: err.message });
       }
     });
 
     /**
-     * Real-time Player Movement
+     * Join Private Room via Secret Code
      */
-    socket.on('player_move', (data: {
-      x: number;
-      y: number;
-      vx?: number;
-      vy?: number;
-      anim?: string;
-      flipX?: boolean;
-      planetId?: string;
-    }) => {
-      if (!socket.universeId) return;
-
-      // Broadcast position to partner in the same universe room
-      socket.to(`universe:${socket.universeId}`).emit('partner_moved', {
-        userId,
-        displayName,
-        x: data.x,
-        y: data.y,
-        vx: data.vx || 0,
-        vy: data.vy || 0,
-        anim: data.anim || 'idle',
-        flipX: !!data.flipX,
-        planetId: data.planetId || 'planet_lumina',
-        timestamp: Date.now(),
-      });
-    });
-
-    /**
-     * Private Couple Emote (Heart, Kiss, Hug, Sparkle, Dance)
-     */
-    socket.on('player_emote', (data: { emote: string; x: number; y: number }) => {
-      if (!socket.universeId) return;
-
-      io.to(`universe:${socket.universeId}`).emit('emote_triggered', {
-        userId,
-        displayName,
-        emote: data.emote,
-        x: data.x,
-        y: data.y,
-        timestamp: Date.now(),
-      });
-    });
-
-    /**
-     * Collect Starlight / Resource
-     */
-    socket.on('collect_star', (data: { starId: number }) => {
-      const universeId = socket.universeId;
-      if (!universeId) return;
-
-      const stars = universeStars.get(universeId);
-      if (stars && stars.has(data.starId)) {
-        // Remove star so neither player can collect it again
-        stars.delete(data.starId);
-
-        // Update database shared stars and mission progress atomically
-        db.prepare(`
-          UPDATE universe_states
-          SET shared_stars = shared_stars + 10, updated_at = datetime('now')
-          WHERE universe_id = ?
-        `).run(universeId);
-
-        const missionUpdate = GameSaveService.updateMissionProgress(universeId, 'tutorial_stars', 1);
-
-        const updatedState = db.prepare(`
-          SELECT shared_stars as sharedStars FROM universe_states WHERE universe_id = ?
-        `).get(universeId) as any;
-
-        // Broadcast to both partners
-        io.to(`universe:${universeId}`).emit('star_collected', {
-          starId: data.starId,
-          collectedBy: displayName,
-          sharedStars: updatedState.sharedStars,
-          missionUpdate,
-          timestamp: Date.now(),
-        });
-      }
-    });
-
-    /**
-     * Boss Encounter Combat (Cooperative attack)
-     */
-    socket.on('boss_attack', (data: { damage: number; attackType?: string }) => {
-      const universeId = socket.universeId;
-      if (!universeId) return;
-
-      const boss = universeBosses.get(universeId);
-      if (!boss || !boss.isAlive) return;
-
-      const actualDamage = Math.min(Math.max(data.damage || 15, 10), 35);
-      boss.health = Math.max(0, boss.health - actualDamage);
-
-      // Check phase transition
-      if (boss.health < boss.maxHealth * 0.5 && boss.phase === 1) {
-        boss.phase = 2;
-        io.to(`universe:${universeId}`).emit('boss_phase_change', {
-          phase: 2,
-          message: 'The Starlight Golem enters Cosmic Overdrive!',
-        });
-      }
-
-      // Broadcast boss damage
-      io.to(`universe:${universeId}`).emit('boss_damaged', {
-        attackerId: userId,
-        attackerName: displayName,
-        damage: actualDamage,
-        bossHealth: boss.health,
-        bossMaxHealth: boss.maxHealth,
-        phase: boss.phase,
-      });
-
-      // Boss defeat check
-      if (boss.health <= 0) {
-        boss.isAlive = false;
-
-        // Update DB
-        db.prepare(`
-          UPDATE universe_states
-          SET boss_defeated = 1, shared_stars = shared_stars + 100, updated_at = datetime('now')
-          WHERE universe_id = ?
-        `).run(universeId);
-
-        GameSaveService.updateMissionProgress(universeId, 'defeat_boss', 1);
-
-        // Add special unlocked item: Heart of the Universe monument to shared inventory
-        const existing = db.prepare(`
-          SELECT id FROM inventory_items WHERE universe_id = ? AND item_type = 'heart_monument'
-        `).get(universeId);
-
-        if (!existing) {
-          db.prepare(`
-            INSERT INTO inventory_items (id, universe_id, item_type, quantity, is_shared)
-            VALUES (?, ?, 'heart_monument', 1, 1)
-          `).run(require('crypto').randomUUID ? require('crypto').randomUUID() : `item-${Date.now()}`, universeId);
+    socket.on('join_room', ({ code }: { code: string }) => {
+      try {
+        const rateCheck = checkCodeRateLimit(userId);
+        if (!rateCheck.allowed) {
+          socket.emit('error', { message: `Too many attempts. Please wait ${rateCheck.waitSeconds}s.` });
+          return;
         }
 
-        io.to(`universe:${universeId}`).emit('boss_defeated', {
-          defeatedBy: displayName,
-          message: 'Starlight Golem defeated! The cosmos rejoices with infinite starlight!',
-          rewardItem: 'heart_monument',
+        const trimmedCode = code.trim().toUpperCase();
+        const codeHash = hashSecretCode(trimmedCode);
+
+        const room = db.prepare(`
+          SELECT id, owner_id as ownerId, arena_id as arenaId, status
+          FROM private_rooms WHERE code_hash = ?
+        `).get(codeHash) as any;
+
+        if (!room) {
+          socket.emit('error', { message: 'Invalid secret battle code. Check with your partner!' });
+          return;
+        }
+
+        // Check 2-player capacity limit
+        const members = db.prepare(`
+          SELECT m.user_id as userId, m.role, m.fighter_id as fighterId, m.is_ready as isReady,
+                 p.display_name as displayName, p.level, p.title
+          FROM room_members m
+          JOIN profiles p ON p.id = m.user_id
+          WHERE m.room_id = ?
+        `).all(room.id) as any[];
+
+        const existingMember = members.find((m) => m.userId === userId);
+
+        if (!existingMember && members.length >= 2) {
+          socket.emit('error', { message: 'This battle room is already full! (Max 2 fighters for 1v1)' });
+          return;
+        }
+
+        if (!existingMember) {
+          db.prepare(`
+            INSERT INTO room_members (id, room_id, user_id, fighter_id, role, is_ready)
+            VALUES (?, ?, ?, 'cupid_spark', 'challenger', 0)
+          `).run(uuidv4(), room.id, userId);
+        }
+
+        resetCodeRateLimit(userId);
+
+        socket.currentRoomId = room.id;
+        socket.join(`room:${room.id}`);
+
+        // Fetch refreshed members
+        const updatedMembers = db.prepare(`
+          SELECT m.user_id as userId, m.role, m.fighter_id as fighterId, m.is_ready as isReady,
+                 p.display_name as displayName, p.level, p.title
+          FROM room_members m
+          JOIN profiles p ON p.id = m.user_id
+          WHERE m.room_id = ?
+        `).all(room.id) as any[];
+
+        const myMembership = updatedMembers.find((m) => m.userId === userId);
+        const opponentMembership = updatedMembers.find((m) => m.userId !== userId);
+
+        // Notify joining player
+        socket.emit('room_joined', {
+          roomId: room.id,
+          arenaId: room.arenaId,
+          role: myMembership?.role || 'challenger',
+          me: myMembership,
+          opponent: opponentMembership || null,
+        });
+
+        // Notify other player in room
+        socket.to(`room:${room.id}`).emit('opponent_joined', {
+          opponent: myMembership,
+        });
+
+        console.log(`🔥 Player ${displayName} joined battle room ${room.id}`);
+      } catch (err: any) {
+        socket.emit('error', { message: err.message });
+      }
+    });
+
+    /**
+     * Select Fighter
+     */
+    socket.on('select_fighter', ({ fighterId }: { fighterId: FighterId }) => {
+      const roomId = socket.currentRoomId;
+      if (!roomId) return;
+
+      db.prepare(`UPDATE room_members SET fighter_id = ? WHERE room_id = ? AND user_id = ?`).run(fighterId, roomId, userId);
+      db.prepare(`UPDATE profiles SET selected_fighter = ? WHERE id = ?`).run(fighterId, userId);
+
+      io.to(`room:${roomId}`).emit('fighter_selected', {
+        userId,
+        fighterId,
+      });
+    });
+
+    /**
+     * Select Arena (Room owner only)
+     */
+    socket.on('select_arena', ({ arenaId }: { arenaId: ArenaId }) => {
+      const roomId = socket.currentRoomId;
+      if (!roomId) return;
+
+      db.prepare(`UPDATE private_rooms SET arena_id = ? WHERE id = ?`).run(arenaId, roomId);
+
+      io.to(`room:${roomId}`).emit('arena_selected', {
+        arenaId,
+      });
+    });
+
+    /**
+     * Toggle Ready
+     */
+    socket.on('toggle_ready', () => {
+      const roomId = socket.currentRoomId;
+      if (!roomId) return;
+
+      const member = db.prepare(`SELECT is_ready FROM room_members WHERE room_id = ? AND user_id = ?`).get(roomId, userId) as any;
+      const newReady = member?.is_ready ? 0 : 1;
+
+      db.prepare(`UPDATE room_members SET is_ready = ? WHERE room_id = ? AND user_id = ?`).run(newReady, roomId, userId);
+
+      io.to(`room:${roomId}`).emit('ready_toggled', {
+        userId,
+        isReady: !!newReady,
+      });
+    });
+
+    /**
+     * Start Match (Owner only, requires both players ready)
+     */
+    socket.on('start_match', () => {
+      const roomId = socket.currentRoomId;
+      if (!roomId) return;
+
+      const members = db.prepare(`
+        SELECT m.user_id as id, m.fighter_id as fighterId, p.display_name as displayName
+        FROM room_members m
+        JOIN profiles p ON p.id = m.user_id
+        WHERE m.room_id = ?
+      `).all(roomId) as any[];
+
+      if (members.length < 2) {
+        socket.emit('error', { message: 'Waiting for your partner to join!' });
+        return;
+      }
+
+      const room = db.prepare(`SELECT arena_id as arenaId FROM private_rooms WHERE id = ?`).get(roomId) as any;
+      const arenaId: ArenaId = room?.arenaId || 'heart_garden';
+
+      const match = BattleEngine.createMatch(roomId, arenaId, members[0], members[1]);
+
+      io.to(`room:${roomId}`).emit('match_started', {
+        match,
+      });
+
+      console.log(`⚔️ Match ${match.matchId} started in room ${roomId}`);
+    });
+
+    /**
+     * Combat Movement Update
+     */
+    socket.on('combat_move', (data) => {
+      const roomId = socket.currentRoomId;
+      if (!roomId) return;
+
+      const result = BattleEngine.processMovement(roomId, userId, data);
+      if (result) {
+        socket.to(`room:${roomId}`).emit('opponent_moved', {
+          userId,
+          x: result.combatant.x,
+          y: result.combatant.y,
+          vx: result.combatant.vx,
+          vy: result.combatant.vy,
+          isFacingLeft: result.combatant.isFacingLeft,
+          action: result.combatant.action,
+          isBlocking: result.combatant.isBlocking,
+          isDodging: result.combatant.isDodging,
+          timestamp: Date.now(),
         });
       }
     });
 
     /**
-     * Real-time Object Placement / Removal synchronization
+     * Authoritative Attack Execution
      */
-    socket.on('object_placed', (placedObject: any) => {
-      if (!socket.universeId) return;
-      socket.to(`universe:${socket.universeId}`).emit('object_placed', placedObject);
-    });
+    socket.on('combat_attack', ({ attackType }: { attackType: 'light' | 'heavy' | 'special' }) => {
+      const roomId = socket.currentRoomId;
+      if (!roomId) return;
 
-    socket.on('object_removed', (data: { objectId: string }) => {
-      if (!socket.universeId) return;
-      socket.to(`universe:${socket.universeId}`).emit('object_removed', data);
+      const result = BattleEngine.processAttack(roomId, userId, attackType);
+
+      // Broadcast visual attack animation trigger
+      io.to(`room:${roomId}`).emit('attack_triggered', {
+        attackerId: userId,
+        attackType,
+      });
+
+      if (result.clash) {
+        io.to(`room:${roomId}`).emit('heart_clash_triggered', {
+          message: '💥 HEART CLASH! Both ultimate powers collided!',
+        });
+      } else if (result.hit) {
+        io.to(`room:${roomId}`).emit('combat_hit', {
+          attackerId: userId,
+          damage: result.damage,
+          blocked: result.blocked,
+          targetHealth: result.targetHealth,
+          attackerEnergy: result.attackerEnergy,
+        });
+
+        if (result.roundOver) {
+          io.to(`room:${roomId}`).emit('round_over', {
+            roundWinner: result.roundWinner,
+            matchOver: result.matchOver,
+            matchWinner: result.matchWinner,
+          });
+
+          // If match continues, start next round after 3.5s dramatic intermission
+          if (!result.matchOver) {
+            setTimeout(() => {
+              const nextRound = BattleEngine.startNextRound(roomId);
+              if (nextRound) {
+                io.to(`room:${roomId}`).emit('round_started', {
+                  roundNumber: nextRound.roundNumber,
+                  match: nextRound,
+                });
+              }
+            }, 3500);
+          }
+        }
+      } else if (result.dodged) {
+        io.to(`room:${roomId}`).emit('attack_dodged', {
+          attackerId: userId,
+        });
+      }
     });
 
     /**
-     * Unlock Portal synchronization
+     * Send Romantic/Fight Emote
      */
-    socket.on('unlock_portal', () => {
-      const universeId = socket.universeId;
-      if (!universeId) return;
+    socket.on('combat_emote', ({ emote }: { emote: string }) => {
+      const roomId = socket.currentRoomId;
+      if (!roomId) return;
 
-      db.prepare(`
-        UPDATE universe_states SET portal_unlocked = 1, updated_at = datetime('now') WHERE universe_id = ?
-      `).run(universeId);
-
-      GameSaveService.updateMissionProgress(universeId, 'unlock_portal', 1);
-
-      io.to(`universe:${universeId}`).emit('portal_unlocked', {
-        unlockedBy: displayName,
-        message: 'The Stargate to Nebula Arena is now OPEN!',
+      io.to(`room:${roomId}`).emit('emote_received', {
+        userId,
+        displayName,
+        emote,
+        timestamp: Date.now(),
       });
     });
 
     /**
-     * Disconnect Handling
+     * Rematch Vote
      */
-    socket.on('disconnect', () => {
-      console.log(`🔌 Player disconnected: ${displayName} (${userId})`);
-      if (socket.universeId) {
-        socket.to(`universe:${socket.universeId}`).emit('partner_left', {
+    socket.on('vote_rematch', () => {
+      const roomId = socket.currentRoomId;
+      if (!roomId) return;
+
+      const res = BattleEngine.voteRematch(roomId, userId);
+      if (res?.restarted) {
+        io.to(`room:${roomId}`).emit('match_restarted', {
+          match: res.match,
+        });
+      } else {
+        io.to(`room:${roomId}`).emit('rematch_voted', {
           userId,
           displayName,
-          timestamp: Date.now(),
+          votesCount: res?.votesCount || 1,
+        });
+      }
+    });
+
+    /**
+     * Disconnection Handling
+     */
+    socket.on('disconnect', () => {
+      console.log(`🔌 Fighter disconnected: ${displayName} (${userId})`);
+      const roomId = socket.currentRoomId;
+      if (roomId) {
+        socket.to(`room:${roomId}`).emit('opponent_left', {
+          userId,
+          displayName,
         });
       }
     });

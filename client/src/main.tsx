@@ -2,15 +2,15 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { AuthProvider } from './context/AuthContext';
-import { UniverseProvider } from './context/UniverseContext';
+import { BattleProvider } from './context/BattleContext';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AuthProvider>
-      <UniverseProvider>
+      <BattleProvider>
         <App />
-      </UniverseProvider>
+      </BattleProvider>
     </AuthProvider>
   </React.StrictMode>
 );

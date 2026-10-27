@@ -1,15 +1,22 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { api, UserProfile, UniverseSummary } from '../services/api';
+import { api, UserProfile } from '../services/api';
 import { localDb, requestPersistentStorage } from '../services/db';
 import { connectivity } from '../services/connectivity';
+import { FighterId } from '../types/combat';
 
 interface AuthContextType {
   user: UserProfile | null;
-  universes: UniverseSummary[];
   token: string | null;
   isLoading: boolean;
   login: (payload: { email: string; password: string }) => Promise<void>;
-  register: (payload: { email: string; password: string; displayName: string; avatarColor?: string; avatarStyle?: string }) => Promise<void>;
+  register: (payload: {
+    email: string;
+    password: string;
+    displayName: string;
+    avatarColor?: string;
+    avatarStyle?: string;
+    selectedFighter?: FighterId;
+  }) => Promise<void>;
   logout: () => void;
   refreshUserData: () => Promise<void>;
 }
@@ -18,7 +25,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [universes, setUniverses] = useState<UniverseSummary[]>([]);
   const [token, setTokenState] = useState<string | null>(api.getToken());
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -32,7 +38,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const res = await api.getMe();
           setUser(res.user);
-          setUniverses(res.universes);
 
           // Cache in IndexedDB for fast UI rendering
           await localDb.profiles.put({
@@ -40,7 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             displayName: res.user.displayName,
             email: res.user.email,
             avatarColor: res.user.avatarColor,
-            avatarStyle: res.user.avatarStyle,
+            avatarStyle: 'starlight',
             cachedAt: Date.now(),
           });
         } catch (err) {
@@ -63,7 +68,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (payload: { email: string; password: string }) => {
     const res = await api.login(payload);
     setUser(res.user);
-    setUniverses(res.universes);
     setTokenState(res.token);
 
     await localDb.profiles.put({
@@ -71,15 +75,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       displayName: res.user.displayName,
       email: res.user.email,
       avatarColor: res.user.avatarColor,
-      avatarStyle: res.user.avatarStyle,
+      avatarStyle: 'starlight',
       cachedAt: Date.now(),
     });
   };
 
-  const register = async (payload: { email: string; password: string; displayName: string; avatarColor?: string; avatarStyle?: string }) => {
+  const register = async (payload: {
+    email: string;
+    password: string;
+    displayName: string;
+    avatarColor?: string;
+    avatarStyle?: string;
+    selectedFighter?: FighterId;
+  }) => {
     const res = await api.register(payload);
     setUser(res.user);
-    setUniverses([]);
     setTokenState(res.token);
 
     await localDb.profiles.put({
@@ -87,7 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       displayName: res.user.displayName,
       email: res.user.email,
       avatarColor: res.user.avatarColor,
-      avatarStyle: res.user.avatarStyle,
+      avatarStyle: 'starlight',
       cachedAt: Date.now(),
     });
   };
@@ -96,7 +106,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     api.logout();
     setTokenState(null);
     setUser(null);
-    setUniverses([]);
   };
 
   const refreshUserData = async () => {
@@ -104,7 +113,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await api.getMe();
       setUser(res.user);
-      setUniverses(res.universes);
     } catch (err) {
       console.warn('Failed to refresh user data:', err);
     }
@@ -114,7 +122,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         user,
-        universes,
         token,
         isLoading,
         login,

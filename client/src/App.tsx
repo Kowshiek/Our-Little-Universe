@@ -1,64 +1,74 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './context/AuthContext';
-import { useUniverse } from './context/UniverseContext';
+import { useBattle } from './context/BattleContext';
+import { socketService } from './services/socket';
+import { connectivity, ConnectivityState } from './services/connectivity';
 import { LandingPage } from './components/LandingPage';
+import { LobbyRoom } from './components/LobbyRoom';
+import { BattleCanvas, BattleCanvasHandle } from './game/BattleCanvas';
+import { BattleHUD } from './components/BattleHUD';
+import { MobileFightControls } from './components/MobileFightControls';
 import { AuthModal } from './components/AuthModal';
-import { CreateUniverseModal } from './components/CreateUniverseModal';
-import { JoinUniverseModal } from './components/JoinUniverseModal';
-import { GameCanvas, GameCanvasHandle } from './game/GameCanvas';
-import { HUD } from './components/HUD';
-import { MobileControls } from './components/MobileControls';
-import { QuestTrackerModal } from './components/QuestTrackerModal';
-import { CustomizationModal } from './components/CustomizationModal';
-import { EmotePickerModal } from './components/EmotePickerModal';
-import { SettingsModal } from './components/SettingsModal';
-import { PortalDialog } from './components/PortalDialog';
+import { JoinBattleModal } from './components/JoinBattleModal';
+import { FighterGalleryModal } from './components/FighterGalleryModal';
+import { HowToPlayModal } from './components/HowToPlayModal';
 import { InstallModal } from './components/InstallModal';
+import { MatchResultsModal } from './components/MatchResultsModal';
 import { OfflineOverlay } from './components/OfflineOverlay';
-import { WelcomeBackModal } from './components/WelcomeBackModal';
-import { Sparkles, Loader2, ArrowLeft, Check, X } from 'lucide-react';
+import { Sparkles, Swords, ArrowLeft, Loader2 } from 'lucide-react';
+import { FIGHTERS } from './types/combat';
 
 export const App: React.FC = () => {
-  const { user, universes, isLoading: isAuthLoading } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const {
-    activeUniverseId,
-    gameData,
-    isLoading: isUniverseLoading,
-    isReconnecting,
-    connectivityState,
-    enterUniverse,
-    leaveUniverse,
-    placeDecoration,
-  } = useUniverse();
+    currentRoomId,
+    secretCode,
+    myFighterId,
+    selectedArenaId,
+    opponent,
+    match,
+    inMatch,
+    isTrainingMode,
+    matchWinner,
+    createPrivateRoom,
+    joinPrivateRoom,
+    leaveRoom,
+    startTrainingMode,
+    exitTrainingMode,
+  } = useBattle();
 
-  const gameCanvasRef = useRef<GameCanvasHandle>(null);
+  const battleCanvasRef = useRef<BattleCanvasHandle>(null);
 
   // Modals state
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [initialJoinCode, setInitialJoinCode] = useState('');
-  const [questsOpen, setQuestsOpen] = useState(false);
-  const [workshopOpen, setWorkshopOpen] = useState(false);
-  const [emotesOpen, setEmotesOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [portalOpen, setPortalOpen] = useState(false);
-  const [installOpen, setInstallOpen] = useState(false);
-  const [showWelcomeBack, setShowWelcomeBack] = useState(false);
+  const [rosterModalOpen, setRosterModalOpen] = useState(false);
+  const [howToPlayModalOpen, setHowToPlayOpen] = useState(false);
+  const [installModalOpen, setInstallOpen] = useState(false);
 
-  // Scene state: 'PlanetScene' or 'BossScene'
-  const [currentScene, setCurrentScene] = useState<'PlanetScene' | 'BossScene'>('PlanetScene');
+  // Local Training Dummy health & energy state
+  const [trainingDummyHp, setTrainingDummyHp] = useState(100);
+  const [trainingDummyEnergy, setTrainingDummyEnergy] = useState(0);
 
-  // Object Placement Mode
-  const [placingItemType, setPlacingItemType] = useState<string | null>(null);
+  // Connectivity monitoring
+  const [connectivityState, setConnectivityState] = useState<ConnectivityState>(connectivity.getState());
 
-  // Handle invitation URL query param e.g. ?join=LOVE-8F4A
+  useEffect(() => {
+    const unsub = connectivity.subscribe((state) => {
+      setConnectivityState(state);
+    });
+    return unsub;
+  }, []);
+
+  // Handle invitation URL query param e.g. ?code=LOVE-8F4A or ?join=LOVE-8F4A
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const joinCode = params.get('join');
-    if (joinCode) {
-      setInitialJoinCode(joinCode.toUpperCase());
+    const codeParam = params.get('code') || params.get('join');
+    if (codeParam) {
+      const code = codeParam.toUpperCase();
+      setInitialJoinCode(code);
       if (user) {
         setJoinModalOpen(true);
       } else {
@@ -67,18 +77,38 @@ export const App: React.FC = () => {
     }
   }, [user]);
 
-  // Handle Create Universe button from landing page
-  const handleCreateUniverse = () => {
+  // Hook socket combat visual events to Phaser Canvas
+  useEffect(() => {
+    const unsubHit = socketService.on('combat_hit', (data: any) => {
+      if (battleCanvasRef.current) {
+        const text = data.blocked ? `BLOCKED -${data.damage}` : `-${data.damage}`;
+        const color = data.blocked ? '#38bdf8' : data.attackType === 'special' ? '#ffd166' : '#ff2a85';
+        battleCanvasRef.current.showHitEffect(data.victimX || 500, (data.victimY || 350) - 40, text, color);
+      }
+    });
+
+    const unsubClash = socketService.on('heart_clash_triggered', () => {
+      battleCanvasRef.current?.triggerHeartClash();
+    });
+
+    return () => {
+      unsubHit();
+      unsubClash();
+    };
+  }, []);
+
+  // Create Private Battle Room
+  const handleCreateBattle = () => {
     if (!user) {
       setAuthMode('register');
       setAuthModalOpen(true);
     } else {
-      setCreateModalOpen(true);
+      createPrivateRoom();
     }
   };
 
-  // Handle Join Universe button from landing page
-  const handleJoinUniverse = () => {
+  // Join Battle Room with code
+  const handleJoinBattle = () => {
     if (!user) {
       setAuthMode('login');
       setAuthModalOpen(true);
@@ -87,41 +117,28 @@ export const App: React.FC = () => {
     }
   };
 
-  // Enter universe
-  const handleEnterUniverse = async (universeId: string) => {
-    try {
-      await enterUniverse(universeId);
-      setShowWelcomeBack(true);
-      setCurrentScene('PlanetScene');
-    } catch (err: any) {
-      alert(err.message || 'Failed to enter universe');
-    }
+  // Start Training Dojo
+  const handleStartTraining = () => {
+    setTrainingDummyHp(100);
+    setTrainingDummyEnergy(0);
+    startTrainingMode();
   };
 
-  // Switch scene (e.g. from Portal)
-  const handleSwitchScene = (target: 'PlanetScene' | 'BossScene') => {
-    setCurrentScene(target);
-    gameCanvasRef.current?.switchScene(target);
-  };
-
-  // Confirm placement of decoration at player's current location
-  const handleConfirmPlacement = async () => {
-    if (!placingItemType || !gameData) return;
-    const posX = gameData.player.lastSafeX || 400;
-    const posY = gameData.player.lastSafeY || 350;
-
-    const ok = await placeDecoration(placingItemType, posX, posY, currentScene === 'BossScene' ? 'nebula_arena' : 'planet_lumina');
-    if (ok) {
-      setPlacingItemType(null);
-    }
+  // Handle training dummy damage
+  const handleDamageDummy = (dmg: number) => {
+    setTrainingDummyHp((prev) => {
+      const nextHp = Math.max(0, prev - dmg);
+      battleCanvasRef.current?.showHitEffect(560, 360, `-${dmg}`, '#ffd166');
+      return nextHp;
+    });
   };
 
   // Strict Online-Only: If backend is completely unreachable, show OfflineOverlay
-  if (!connectivityState.isBackendReachable && !activeUniverseId) {
+  if (!connectivityState.isBackendReachable && !inMatch && !currentRoomId) {
     return (
       <OfflineOverlay
-        message={connectivityState.errorMessage || "You're offline. Connect to the internet to enter Our Little Universe."}
-        onRetry={() => {}}
+        message={connectivityState.errorMessage || "Connect to the internet to enter Love Battle."}
+        onRetry={() => connectivity.checkBackendConnectivity()}
       />
     );
   }
@@ -130,158 +147,126 @@ export const App: React.FC = () => {
   if (isAuthLoading) {
     return (
       <div className="min-h-screen w-full flex flex-col items-center justify-center bg-cosmic-darkest text-white select-none">
-        <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-pink-500 to-indigo-600 flex items-center justify-center shadow-xl animate-pulse mb-4">
-          <Sparkles className="w-8 h-8 text-white" />
+        <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-pink-500 via-rose-600 to-indigo-600 flex items-center justify-center shadow-xl animate-pulse mb-4">
+          <Swords className="w-8 h-8 text-white" />
         </div>
-        <p className="text-sm font-bold text-pink-300 tracking-wide font-game animate-pulse">
-          Awakening Celestial Connection...
+        <p className="text-sm font-black text-pink-300 tracking-widest font-game uppercase animate-pulse">
+          Awakening Love Battle Arena...
         </p>
       </div>
     );
   }
 
-  // Universe Loading / Entering screen
-  if (isUniverseLoading) {
-    return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-cosmic-darkest text-white select-none p-6 text-center">
-        <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-pink-500 via-purple-600 to-indigo-600 flex items-center justify-center shadow-2xl mb-6 relative">
-          <Loader2 className="w-10 h-10 text-white animate-spin" />
-        </div>
-        <h3 className="text-2xl font-black text-white mb-2 font-game">Restoring Your Universe...</h3>
-        <p className="text-sm text-purple-200 max-w-sm font-medium">
-          Loading cloud checkpoints, synchronizing island state, and establishing real-time couple link...
-        </p>
-      </div>
-    );
-  }
+  // 1. IN MATCH / FIGHTING VIEW (Phaser 3 + Combat HUD + Touch Controls)
+  if (inMatch) {
+    const isP1 = match?.p1?.userId === user?.id || isTrainingMode;
+    const p1Data = isP1 ? match?.p1 : match?.p2;
+    const p2Data = isP1 ? match?.p2 : match?.p1;
 
-  // Main Active Game View
-  if (activeUniverseId && gameData) {
-    const partnerMember = gameData.members.find((m) => m.userId !== user?.id);
+    const p1Health = p1Data?.health ?? 100;
+    const p1Energy = p1Data?.energy ?? 100;
+    const p1Wins = p1Data?.roundWins ?? 0;
+
+    const p2Health = isTrainingMode ? trainingDummyHp : (p2Data?.health ?? 100);
+    const p2Energy = isTrainingMode ? trainingDummyEnergy : (p2Data?.energy ?? 0);
+    const p2Wins = p2Data?.roundWins ?? 0;
 
     return (
       <div className="relative w-screen h-screen overflow-hidden bg-cosmic-darkest select-none">
-        {/* Reconnecting Overlay if network dropped during session */}
-        {isReconnecting && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-cosmic-darkest/80 backdrop-blur-md select-none">
-            <div className="glass-panel p-6 rounded-3xl flex items-center gap-4 border border-pink-500/40 shadow-2xl">
-              <Loader2 className="w-8 h-8 text-pink-400 animate-spin" />
-              <div>
-                <h4 className="font-black text-white text-base">Reconnecting to Sanctuary...</h4>
-                <p className="text-xs text-purple-200">Preserving local checkpoint safely</p>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Forfeit / Exit Match button */}
+        <div className="absolute top-3 left-3 z-30 pointer-events-auto">
+          <button
+            onClick={() => {
+              if (isTrainingMode) {
+                exitTrainingMode();
+              } else {
+                if (window.confirm('Are you sure you want to exit the match?')) {
+                  leaveRoom();
+                }
+              }
+            }}
+            className="px-3 py-1.5 rounded-xl bg-slate-900/80 border border-purple-500/30 text-purple-300 hover:text-white text-xs font-black flex items-center gap-1.5 transition shadow backdrop-blur-md"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>{isTrainingMode ? 'Exit Dojo' : 'Forfeit'}</span>
+          </button>
+        </div>
 
-        {/* Welcome Back Notification */}
-        {showWelcomeBack && (
-          <WelcomeBackModal
-            universeName={gameData.universe.name}
-            partnerName={partnerMember?.displayName}
-            onDismiss={() => setShowWelcomeBack(false)}
-          />
-        )}
-
-        {/* HUD Overlay */}
-        <HUD
-          onOpenQuests={() => setQuestsOpen(true)}
-          onOpenWorkshop={() => setWorkshopOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenEmotes={() => setEmotesOpen(true)}
-          onOpenPortal={() => setPortalOpen(true)}
-          currentScene={currentScene}
+        {/* Arcade Combat HUD */}
+        <BattleHUD
+          p1Name={p1Data?.displayName || user?.displayName || 'Player 1'}
+          p1Fighter={p1Data?.fighterId || myFighterId}
+          p1Health={p1Health}
+          p1Energy={p1Energy}
+          p1Wins={p1Wins}
+          p2Name={p2Data?.displayName || opponent?.displayName || (isTrainingMode ? 'Training Dummy' : 'Challenger')}
+          p2Fighter={p2Data?.fighterId || opponent?.fighterId || 'cupid_spark'}
+          p2Health={p2Health}
+          p2Energy={p2Energy}
+          p2Wins={p2Wins}
+          roundNumber={match?.roundNumber ?? 1}
+          timerRemaining={match?.timerRemaining ?? 60}
+          status={match?.status || 'fighting'}
+          isTrainingMode={isTrainingMode}
         />
 
         {/* Phaser 3 Playable Canvas */}
-        <GameCanvas
-          ref={gameCanvasRef}
-          onPortalPrompt={() => setPortalOpen(true)}
+        <BattleCanvas
+          ref={battleCanvasRef}
+          myUserId={user?.id}
+          myFighterId={myFighterId}
+          myDisplayName={user?.displayName || 'Fighter'}
+          opponentUserId={opponent?.userId || (isTrainingMode ? 'dummy-bot' : undefined)}
+          opponentFighterId={opponent?.fighterId || 'cupid_spark'}
+          opponentDisplayName={opponent?.displayName || (isTrainingMode ? 'Training Dummy' : 'Opponent')}
+          arenaId={selectedArenaId}
+          isTrainingMode={isTrainingMode}
+          onSendMove={(data) => socketService.sendMove(data)}
+          onPerformAttack={(attackType) => socketService.performAttack(attackType)}
+          onDamageDummy={handleDamageDummy}
         />
 
-        {/* Placement Mode Banner */}
-        {placingItemType && (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 pointer-events-auto glass-panel px-6 py-3 rounded-2xl border border-pink-500/60 shadow-2xl flex items-center gap-4 bg-cosmic-dark/95">
-            <div>
-              <div className="text-xs font-bold text-white">Placing: {placingItemType.replace('_', ' ')}</div>
-              <div className="text-[11px] text-pink-300">Move your astronaut to desired spot, then click confirm</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleConfirmPlacement}
-                className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow"
-              >
-                <Check className="w-4 h-4" /> Place Here
-              </button>
-              <button
-                onClick={() => setPlacingItemType(null)}
-                className="p-2 rounded-xl bg-slate-800 text-purple-300 hover:text-white text-xs font-bold"
-              >
-                <X className="w-4 h-4" /> Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Mobile Touch Controls */}
-        <MobileControls
-          onMove={(vector) => gameCanvasRef.current?.setVirtualJoystick(vector)}
-          onAttack={() => gameCanvasRef.current?.triggerAttack()}
-          onInteract={() => setPortalOpen(true)}
-          onOpenEmotes={() => setEmotesOpen(true)}
-          onOpenBuildMode={() => setWorkshopOpen(true)}
+        {/* Mobile Touch Screen Fighting Controls */}
+        <MobileFightControls
+          onMove={(vector) => battleCanvasRef.current?.setVirtualJoystick(vector)}
+          onLightAttack={() => battleCanvasRef.current?.triggerLightAttack()}
+          onHeavyAttack={() => battleCanvasRef.current?.triggerHeavyAttack()}
+          onSpecial={() => battleCanvasRef.current?.triggerSpecial()}
+          onBlock={(active) => battleCanvasRef.current?.triggerBlock(active)}
+          onDodge={() => battleCanvasRef.current?.triggerDodge()}
+          onOpenEmotes={() => socketService.sendEmote('heart')}
+          isSpecialReady={p1Energy >= 100}
         />
 
-        {/* Modals */}
-        <QuestTrackerModal
-          isOpen={questsOpen}
-          onClose={() => setQuestsOpen(false)}
-        />
-
-        <CustomizationModal
-          isOpen={workshopOpen}
-          onClose={() => setWorkshopOpen(false)}
-          onSelectPlacementItem={(item) => setPlacingItemType(item)}
-        />
-
-        <EmotePickerModal
-          isOpen={emotesOpen}
-          onClose={() => setEmotesOpen(false)}
-          playerPos={{
-            x: gameData.player.lastSafeX || 400,
-            y: gameData.player.lastSafeY || 350,
+        {/* Match Results Modal (Victory / Defeat / Rematch) */}
+        <MatchResultsModal
+          isOpen={!!matchWinner || (isTrainingMode && trainingDummyHp <= 0)}
+          onReturnToLobby={() => {
+            if (isTrainingMode) {
+              exitTrainingMode();
+            } else {
+              leaveRoom();
+            }
           }}
-        />
-
-        <SettingsModal
-          isOpen={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          onOpenInstall={() => setInstallOpen(true)}
-          onExitUniverse={() => leaveUniverse()}
-        />
-
-        <PortalDialog
-          isOpen={portalOpen}
-          onClose={() => setPortalOpen(false)}
-          currentScene={currentScene}
-          onSwitchScene={handleSwitchScene}
-        />
-
-        <InstallModal
-          isOpen={installOpen}
-          onClose={() => setInstallOpen(false)}
         />
       </div>
     );
   }
 
-  // Otherwise, show Landing Page
+  // 2. IN LOBBY ROOM VIEW (Fighter Selection, Arena Selection, Ready & Secret Code)
+  if (currentRoomId) {
+    return <LobbyRoom onBack={() => leaveRoom()} />;
+  }
+
+  // 3. LANDING PAGE VIEW
   return (
     <>
       <LandingPage
-        onCreateUniverse={handleCreateUniverse}
-        onJoinUniverse={handleJoinUniverse}
-        onContinueAdventure={handleEnterUniverse}
+        onCreateBattle={handleCreateBattle}
+        onJoinBattle={handleJoinBattle}
+        onStartTraining={handleStartTraining}
+        onOpenRoster={() => setRosterModalOpen(true)}
+        onOpenHowToPlay={() => setHowToPlayOpen(true)}
         onOpenAuth={(mode) => {
           setAuthMode(mode);
           setAuthModalOpen(true);
@@ -300,21 +285,24 @@ export const App: React.FC = () => {
         }}
       />
 
-      <CreateUniverseModal
-        isOpen={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        onUniverseCreated={(id) => handleEnterUniverse(id)}
-      />
-
-      <JoinUniverseModal
+      <JoinBattleModal
         isOpen={joinModalOpen}
         onClose={() => setJoinModalOpen(false)}
-        onJoined={(id) => handleEnterUniverse(id)}
         initialCode={initialJoinCode}
       />
 
+      <FighterGalleryModal
+        isOpen={rosterModalOpen}
+        onClose={() => setRosterModalOpen(false)}
+      />
+
+      <HowToPlayModal
+        isOpen={howToPlayModalOpen}
+        onClose={() => setHowToPlayOpen(false)}
+      />
+
       <InstallModal
-        isOpen={installOpen}
+        isOpen={installModalOpen}
         onClose={() => setInstallOpen(false)}
       />
     </>

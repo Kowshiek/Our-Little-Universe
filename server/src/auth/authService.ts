@@ -2,20 +2,19 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { db } from '../db/database.js';
-import { v4 as uuidv4 } from 'uuid';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_cosmic_jwt_key_love_universe_2026_dev';
+const JWT_SECRET = process.env.JWT_SECRET || 'love_battle_secret_key_flame_2026_dev';
 const SALT_ROUNDS = 10;
 
-// Rate limiting map for invite code attempts (IP / User -> { attempts, lastAttemptTime })
-const inviteRateLimits = new Map<string, { attempts: number; blockedUntil: number }>();
+// Rate limiting map for secret code attempts (IP / User -> { attempts, blockedUntil })
+const codeRateLimits = new Map<string, { attempts: number; blockedUntil: number }>();
 
-export function checkInviteRateLimit(identifier: string): { allowed: boolean; waitSeconds?: number } {
+export function checkCodeRateLimit(identifier: string): { allowed: boolean; waitSeconds?: number } {
   const now = Date.now();
-  const record = inviteRateLimits.get(identifier);
+  const record = codeRateLimits.get(identifier);
 
   if (!record) {
-    inviteRateLimits.set(identifier, { attempts: 1, blockedUntil: 0 });
+    codeRateLimits.set(identifier, { attempts: 1, blockedUntil: 0 });
     return { allowed: true };
   }
 
@@ -27,7 +26,7 @@ export function checkInviteRateLimit(identifier: string): { allowed: boolean; wa
   }
 
   record.attempts += 1;
-  // If more than 5 attempts within a minute, block for 60 seconds
+  // If more than 5 failed attempts within 60s, block for 60 seconds
   if (record.attempts > 5) {
     record.blockedUntil = now + 60000;
     record.attempts = 0;
@@ -37,21 +36,21 @@ export function checkInviteRateLimit(identifier: string): { allowed: boolean; wa
   return { allowed: true };
 }
 
-export function resetInviteRateLimit(identifier: string): void {
-  inviteRateLimits.delete(identifier);
+export function resetCodeRateLimit(identifier: string): void {
+  codeRateLimits.delete(identifier);
 }
 
-// Generate human-friendly, cryptographically secure code e.g. LOVE-7X9K
-export function generateInviteCode(): { code: string; codeHash: string } {
-  const prefixList = ['LOVE', 'STAR', 'COSMIC', 'HEART', 'MOON'];
-  const prefix = prefixList[Math.floor(Math.random() * prefixList.length)];
+// Generate unpredictable, romantic secret invitation code e.g. LOVE-9F2C, HEART-4B7E
+export function generateSecretCode(): { code: string; codeHash: string } {
+  const prefixes = ['LOVE', 'HEART', 'FLAME', 'VALOR', 'CUPID'];
+  const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
   const randomSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
   const code = `${prefix}-${randomSuffix}`;
-  const codeHash = hashInviteCode(code);
+  const codeHash = hashSecretCode(code);
   return { code, codeHash };
 }
 
-export function hashInviteCode(code: string): string {
+export function hashSecretCode(code: string): string {
   return crypto.createHash('sha256').update(code.trim().toUpperCase()).digest('hex');
 }
 
@@ -77,7 +76,8 @@ export function verifyToken(token: string): { userId: string; email: string; dis
 
 export function getUserById(userId: string) {
   const query = db.prepare(`
-    SELECT id, email, display_name as displayName, avatar_color as avatarColor, avatar_style as avatarStyle, created_at as createdAt
+    SELECT id, email, display_name as displayName, selected_fighter as selectedFighter,
+           avatar_color as avatarColor, title, level, exp, wins, losses, draws, created_at as createdAt
     FROM profiles WHERE id = ?
   `);
   return query.get(userId) as any;
@@ -85,7 +85,9 @@ export function getUserById(userId: string) {
 
 export function getUserByEmail(email: string) {
   const query = db.prepare(`
-    SELECT id, email, password_hash as passwordHash, display_name as displayName, avatar_color as avatarColor, avatar_style as avatarStyle
+    SELECT id, email, password_hash as passwordHash, display_name as displayName,
+           selected_fighter as selectedFighter, avatar_color as avatarColor, title,
+           level, exp, wins, losses, draws
     FROM profiles WHERE LOWER(email) = LOWER(?)
   `);
   return query.get(email) as any;

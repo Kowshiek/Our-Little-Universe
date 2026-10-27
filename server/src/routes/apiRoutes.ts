@@ -8,8 +8,11 @@ import {
   verifyToken,
   getUserById,
   getUserByEmail,
+  generateSecretCode,
+  hashSecretCode,
+  checkCodeRateLimit,
+  resetCodeRateLimit,
 } from '../auth/authService.js';
-import { GameSaveService } from '../services/gameSaveService.js';
 
 export const apiRouter = Router();
 
@@ -34,10 +37,10 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
  * AUTHENTICATION ROUTES
  */
 
-// Register new user
+// Register new fighter
 apiRouter.post('/auth/register', async (req: Request, res: Response) => {
   try {
-    const { email, password, displayName, avatarColor, avatarStyle } = req.body;
+    const { email, password, displayName, selectedFighter, avatarColor } = req.body;
 
     if (!email || !password || !displayName) {
       return res.status(400).json({ error: 'Email, password, and display name are required' });
@@ -54,29 +57,27 @@ apiRouter.post('/auth/register', async (req: Request, res: Response) => {
 
     const userId = uuidv4();
     const passwordHash = await hashPassword(password);
-    const color = avatarColor || '#ec4899';
-    const style = avatarStyle || 'starlight';
+    const fighter = selectedFighter || 'heart_knight';
+    const color = avatarColor || '#ff2a85';
 
     db.prepare(`
-      INSERT INTO profiles (id, email, password_hash, display_name, avatar_color, avatar_style)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(userId, email.toLowerCase(), passwordHash, displayName.trim(), color, style);
+      INSERT INTO profiles (id, email, password_hash, display_name, selected_fighter, avatar_color, title, level, exp, wins, losses, draws)
+      VALUES (?, ?, ?, ?, ?, ?, 'Passionate Challenger', 1, 0, 0, 0, 0)
+    `).run(userId, email.toLowerCase(), passwordHash, displayName.trim(), fighter, color);
+
+    // Initial unlocked titles
+    db.prepare(`
+      INSERT INTO player_unlocks (id, user_id, unlock_type, unlock_key)
+      VALUES (?, ?, 'title', 'Passionate Challenger')
+    `).run(uuidv4(), userId);
 
     const token = generateToken({ userId, email: email.toLowerCase(), displayName: displayName.trim() });
+    const user = getUserById(userId);
 
-    return res.status(201).json({
-      token,
-      user: {
-        id: userId,
-        email: email.toLowerCase(),
-        displayName: displayName.trim(),
-        avatarColor: color,
-        avatarStyle: style,
-      },
-    });
+    return res.status(201).json({ token, user });
   } catch (err: any) {
     console.error('Register error:', err);
-    return res.status(500).json({ error: 'Failed to create account: ' + err.message });
+    return res.status(500).json({ error: 'Registration failed: ' + err.message });
   }
 });
 
@@ -100,34 +101,16 @@ apiRouter.post('/auth/login', async (req: Request, res: Response) => {
     }
 
     const token = generateToken({ userId: user.id, email: user.email, displayName: user.displayName });
+    const profile = getUserById(user.id);
 
-    // Retrieve active universes for this user
-    const userUniverses = db.prepare(`
-      SELECT u.id, u.name, u.planet_level as planetLevel, u.owner_id as ownerId, m.role, m.joined_at as joinedAt
-      FROM universe_members m
-      JOIN universes u ON u.id = m.universe_id
-      WHERE m.user_id = ?
-      ORDER BY m.joined_at DESC
-    `).all(user.id);
-
-    return res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName,
-        avatarColor: user.avatarColor,
-        avatarStyle: user.avatarStyle,
-      },
-      universes: userUniverses,
-    });
+    return res.json({ token, user: profile });
   } catch (err: any) {
     console.error('Login error:', err);
     return res.status(500).json({ error: 'Login failed: ' + err.message });
   }
 });
 
-// Get current user profile & universes
+// Get current profile
 apiRouter.get('/auth/me', requireAuth, (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
@@ -136,209 +119,122 @@ apiRouter.get('/auth/me', requireAuth, (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const universes = db.prepare(`
-      SELECT u.id, u.name, u.planet_level as planetLevel, u.owner_id as ownerId, m.role, m.joined_at as joinedAt
-      FROM universe_members m
-      JOIN universes u ON u.id = m.universe_id
-      WHERE m.user_id = ?
-      ORDER BY m.joined_at DESC
+    const unlocks = db.prepare(`
+      SELECT unlock_type as unlockType, unlock_key as unlockKey, unlocked_at as unlockedAt
+      FROM player_unlocks WHERE user_id = ?
     `).all(userId);
 
-    return res.json({ user, universes });
+    return res.json({ user, unlocks });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
 /**
- * UNIVERSE MANAGEMENT ROUTES
+ * PRIVATE ROOM MANAGEMENT
  */
 
-// Create private universe
-apiRouter.post('/universe/create', requireAuth, (req: Request, res: Response) => {
+// Create private battle room
+apiRouter.post('/rooms/create', requireAuth, (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
-    const { universeName } = req.body;
+    const { arenaId = 'heart_garden' } = req.body;
 
-    if (!universeName || !universeName.trim()) {
-      return res.status(400).json({ error: 'Universe name is required' });
-    }
+    const roomId = uuidv4();
+    const { code, codeHash } = generateSecretCode();
 
-    const result = GameSaveService.createUniverse({
-      userId,
-      universeName: universeName.trim(),
+    db.prepare(`
+      INSERT INTO private_rooms (id, code_hash, display_code, owner_id, arena_id, status)
+      VALUES (?, ?, ?, ?, ?, 'waiting')
+    `).run(roomId, codeHash, code, userId, arenaId);
+
+    db.prepare(`
+      INSERT INTO room_members (id, room_id, user_id, role, is_ready)
+      VALUES (?, ?, ?, 'owner', 0)
+    `).run(uuidv4(), roomId, userId);
+
+    return res.status(201).json({
+      roomId,
+      secretCode: code,
+      arenaId,
     });
-
-    return res.status(201).json(result);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-// Join universe with code
-apiRouter.post('/universe/join', requireAuth, (req: Request, res: Response) => {
+// Join private battle room
+apiRouter.post('/rooms/join', requireAuth, (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
     const { code } = req.body;
 
     if (!code || !code.trim()) {
-      return res.status(400).json({ error: 'Invitation code is required' });
+      return res.status(400).json({ error: 'Secret invitation code is required' });
     }
 
-    // Rate limit per IP/User to prevent brute forcing codes
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const rateLimitKey = `${userId}:${ip}`;
-
-    const result = GameSaveService.joinUniverseWithCode(userId, code, rateLimitKey);
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message });
-  }
-});
-
-// Get active invite code for universe (owner only)
-apiRouter.get('/universe/:id/invite', requireAuth, (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const universeId = req.params.id;
-
-    const invite = GameSaveService.getActiveInviteCode(universeId, userId);
-    if (!invite) {
-      return res.status(404).json({ error: 'No active invitation code found' });
+    const rateCheck = checkCodeRateLimit(userId);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({ error: `Too many attempts. Please wait ${rateCheck.waitSeconds}s.` });
     }
 
-    return res.json(invite);
-  } catch (err: any) {
-    return res.status(403).json({ error: err.message });
-  }
-});
+    const codeHash = hashSecretCode(code.trim().toUpperCase());
+    const room = db.prepare(`
+      SELECT id, owner_id as ownerId, arena_id as arenaId, display_code as displayCode
+      FROM private_rooms WHERE code_hash = ?
+    `).get(codeHash) as any;
 
-// Rotate invite code (owner only)
-apiRouter.post('/universe/:id/invite/rotate', requireAuth, (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const universeId = req.params.id;
+    if (!room) {
+      return res.status(404).json({ error: 'Invalid secret invitation code. Please check with your partner!' });
+    }
 
-    const result = GameSaveService.rotateInviteCode(universeId, userId);
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(403).json({ error: err.message });
-  }
-});
+    const memberCount = db.prepare(`SELECT count(*) as count FROM room_members WHERE room_id = ?`).get(room.id) as any;
+    const alreadyMember = db.prepare(`SELECT id FROM room_members WHERE room_id = ? AND user_id = ?`).get(room.id, userId);
 
-/**
- * GAME SAVE & RESUME ARCHITECTURE ROUTES
- */
+    if (!alreadyMember) {
+      if (memberCount.count >= 2) {
+        return res.status(403).json({ error: 'This battle room is already full! (Max 2 fighters)' });
+      }
 
-// Load full shared universe state & individual player state
-apiRouter.get('/game/load/:universeId', requireAuth, (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const universeId = req.params.universeId;
+      db.prepare(`
+        INSERT INTO room_members (id, room_id, user_id, role, is_ready)
+        VALUES (?, ?, ?, 'challenger', 0)
+      `).run(uuidv4(), room.id, userId);
+    }
 
-    const universeData = GameSaveService.loadUniverseState(universeId, userId);
-    const playerData = GameSaveService.loadPlayerState(universeId, userId);
+    resetCodeRateLimit(userId);
 
     return res.json({
-      ...universeData,
-      player: playerData,
+      roomId: room.id,
+      arenaId: room.arenaId,
+      secretCode: room.displayCode,
     });
   } catch (err: any) {
-    return res.status(403).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
-// Save player state (coordinates, health, scene, safe resume point)
-apiRouter.post('/game/save-player/:universeId', requireAuth, (req: Request, res: Response) => {
+// Get battle history
+apiRouter.get('/profile/history', requireAuth, (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
-    const universeId = req.params.universeId;
 
-    const result = GameSaveService.savePlayerState(universeId, userId, req.body);
-    return res.json(result);
+    const matches = db.prepare(`
+      SELECT m.id, m.arena_id as arenaId, m.winner_id as winnerId,
+             m.p1_fighter as p1Fighter, m.p2_fighter as p2Fighter,
+             m.p1_score as p1Score, m.p2_score as p2Score,
+             m.duration_seconds as durationSeconds, m.created_at as createdAt,
+             p1.display_name as p1Name, p2.display_name as p2Name
+      FROM matches m
+      JOIN profiles p1 ON p1.id = m.player1_id
+      JOIN profiles p2 ON p2.id = m.player2_id
+      WHERE m.player1_id = ? OR m.player2_id = ?
+      ORDER BY m.created_at DESC
+      LIMIT 15
+    `).all(userId, userId);
+
+    return res.json({ matches });
   } catch (err: any) {
-    return res.status(400).json({ error: err.message });
-  }
-});
-
-// Save shared universe state
-apiRouter.post('/game/save-universe/:universeId', requireAuth, (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const universeId = req.params.universeId;
-
-    const result = GameSaveService.saveUniverseState(universeId, userId, req.body);
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message });
-  }
-});
-
-// Place object/decoration
-apiRouter.post('/game/place-object/:universeId', requireAuth, (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const universeId = req.params.universeId;
-
-    const result = GameSaveService.placeObject(universeId, userId, req.body);
-    return res.status(201).json(result);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message });
-  }
-});
-
-// Remove object/decoration
-apiRouter.post('/game/remove-object/:universeId', requireAuth, (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const universeId = req.params.universeId;
-    const { objectId } = req.body;
-
-    const result = GameSaveService.removeObject(universeId, userId, objectId);
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message });
-  }
-});
-
-// Purchase shop item using shared stars
-apiRouter.post('/game/purchase/:universeId', requireAuth, (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const universeId = req.params.universeId;
-    const { itemType, cost } = req.body;
-
-    const result = GameSaveService.purchaseShopItem(universeId, userId, itemType, cost);
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message });
-  }
-});
-
-// Claim mission reward atomically
-apiRouter.post('/game/claim-mission/:universeId', requireAuth, (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const universeId = req.params.universeId;
-    const { missionKey } = req.body;
-
-    const result = GameSaveService.claimMissionReward(universeId, userId, missionKey);
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message });
-  }
-});
-
-// Sync pending offline changes queue
-apiRouter.post('/game/sync-queue/:universeId', requireAuth, (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const universeId = req.params.universeId;
-    const { queue } = req.body;
-
-    const result = GameSaveService.syncPendingChanges(universeId, userId, queue || []);
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });

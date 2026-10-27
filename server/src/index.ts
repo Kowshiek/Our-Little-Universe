@@ -37,8 +37,8 @@ app.use(express.json());
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({
     status: 'online',
-    game: 'Our Little Universe',
-    tagline: 'Two Hearts. One Universe.',
+    game: 'LOVE BATTLE',
+    tagline: 'Two Hearts. One Arena. Endless Battles.',
     timestamp: new Date().toISOString(),
   });
 });
