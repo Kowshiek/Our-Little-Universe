@@ -63,6 +63,10 @@ export class ThreeBattleArena {
   // Callbacks
   private options: ArenaOptions;
 
+  // Auto-Combo Chain System
+  private comboStep = 0;
+  private lastLightAttackTime = 0;
+
   // Input states
   private keysPressed: { [key: string]: boolean } = {};
   private virtualJoystick = { x: 0, y: 0 };
@@ -295,14 +299,52 @@ export class ThreeBattleArena {
     }
   }
 
+  public triggerJump() {
+    if (this.player1.isGrounded) {
+      this.player1.vy = 13.2;
+      this.player1.isGrounded = false;
+      this.player1.animState = 'jump';
+    }
+  }
+
   public triggerLightAttack() {
+    // Smart auto-face opponent before attack
+    if (Math.abs(this.player1.x - this.player2.x) < 8.0) {
+      this.player1.facing = this.player2.x > this.player1.x ? 1 : -1;
+    }
+
+    // Smart magnetic step towards opponent
+    const distToOpp = Math.abs(this.player1.x - this.player2.x);
+    if (distToOpp > 1.2 && distToOpp < 3.8) {
+      this.player1.vx = this.player1.facing * 3.8;
+    }
+
+    // Auto-Combo Chain (3-hit progression)
+    const now = performance.now();
+    if (now - this.lastLightAttackTime < 650) {
+      this.comboStep = (this.comboStep + 1) % 3;
+    } else {
+      this.comboStep = 0;
+    }
+    this.lastLightAttackTime = now;
+
+    const comboDmg = this.comboStep === 0 ? 10 : this.comboStep === 1 ? 13 : 18;
+
     this.player1.triggerLightAttack();
     soundFX.playLightPunch();
     this.options.onPerformAttack?.('light');
-    this.checkHit(this.player1, this.player2, 10, 'light');
+    this.checkHit(this.player1, this.player2, comboDmg, 'light');
   }
 
   public triggerHeavyAttack() {
+    // Smart auto-face opponent
+    if (Math.abs(this.player1.x - this.player2.x) < 8.0) {
+      this.player1.facing = this.player2.x > this.player1.x ? 1 : -1;
+    }
+
+    // Heavy lunge forward
+    this.player1.vx = this.player1.facing * 4.2;
+
     this.player1.triggerHeavyAttack();
     soundFX.playHeavyStrike();
     this.options.onPerformAttack?.('heavy');
@@ -312,6 +354,10 @@ export class ThreeBattleArena {
   public triggerSpecial() {
     if (this.player1.energy < 100) return;
     this.player1.energy = 0;
+
+    // Face opponent for ultimate
+    this.player1.facing = this.player2.x > this.player1.x ? 1 : -1;
+
     this.player1.triggerSpecialAttack();
     soundFX.playSpecialBlast();
     this.options.onPerformAttack?.('special');
@@ -324,6 +370,12 @@ export class ThreeBattleArena {
   }
 
   public triggerDodge() {
+    // Auto-dash away from opponent
+    if (this.player2.x > this.player1.x) {
+      this.player1.facing = 1;
+    } else {
+      this.player1.facing = -1;
+    }
     this.player1.triggerDodge();
   }
 

@@ -4,6 +4,7 @@ import { FighterId, ArenaId } from '../../types/combat';
 
 export interface ThreeBattleCanvasHandle {
   setVirtualJoystick: (vector: { x: number; y: number }) => void;
+  triggerJump: () => void;
   triggerLightAttack: () => void;
   triggerHeavyAttack: () => void;
   triggerSpecial: () => void;
@@ -34,6 +35,9 @@ export const ThreeBattleCanvas = forwardRef<ThreeBattleCanvasHandle, ThreeBattle
   useImperativeHandle(ref, () => ({
     setVirtualJoystick: (vector) => {
       arenaRef.current?.setVirtualJoystick(vector);
+    },
+    triggerJump: () => {
+      arenaRef.current?.triggerJump();
     },
     triggerLightAttack: () => {
       arenaRef.current?.triggerLightAttack();

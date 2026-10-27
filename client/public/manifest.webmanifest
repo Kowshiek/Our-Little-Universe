@@ -1,14 +1,14 @@
 {
-  "name": "Our Little Universe",
-  "short_name": "Our Universe",
-  "description": "Two Hearts. One Universe. Real-time online multiplayer adventure for couples.",
+  "name": "LOVE BATTLE — FIGHT FOR LOVE",
+  "short_name": "Love Battle",
+  "description": "Two Hearts. One Arena. Endless Battles. Online 3D multiplayer fighting game for couples.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "any",
-  "theme_color": "#140e36",
-  "background_color": "#0b081d",
-  "categories": ["games", "entertainment", "social"],
+  "orientation": "landscape",
+  "theme_color": "#0a061c",
+  "background_color": "#060412",
+  "categories": ["games", "action", "entertainment"],
   "icons": [
     {
       "src": "/icons/icon-192.png",

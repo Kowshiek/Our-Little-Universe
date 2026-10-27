@@ -15,7 +15,8 @@ import { HowToPlayModal } from './components/HowToPlayModal';
 import { InstallModal } from './components/InstallModal';
 import { MatchResultsModal } from './components/MatchResultsModal';
 import { OfflineOverlay } from './components/OfflineOverlay';
-import { Swords, ArrowLeft, Globe, Wifi } from 'lucide-react';
+import { RotateLandscapePrompt } from './components/RotateLandscapePrompt';
+import { Swords, ArrowLeft, Globe, Wifi, Maximize2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -199,10 +200,27 @@ export const App: React.FC = () => {
           </button>
         </div>
 
-        {/* 3D Battle Badge */}
-        <div className="absolute top-3 right-3 z-30 pointer-events-auto hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-pink-500/30 text-pink-300 text-[11px] font-black uppercase tracking-wider backdrop-blur-md">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span>Real-Time 3D Engine</span>
+        {/* Top Controls: 3D Badge + Fullscreen */}
+        <div className="absolute top-3 right-3 z-30 pointer-events-auto flex items-center gap-2">
+          <button
+            onClick={() => {
+              if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen?.().catch(() => {});
+              } else {
+                document.exitFullscreen?.().catch(() => {});
+              }
+            }}
+            className="px-2.5 py-1.5 rounded-xl bg-slate-900/80 border border-purple-500/30 text-purple-200 hover:text-white text-xs font-black flex items-center gap-1 transition shadow backdrop-blur-md"
+            title="Toggle Fullscreen"
+          >
+            <Maximize2 className="w-3.5 h-3.5 text-pink-400" />
+            <span className="hidden sm:inline">Fullscreen</span>
+          </button>
+
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-pink-500/30 text-pink-300 text-[11px] font-black uppercase tracking-wider backdrop-blur-md">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>Real-Time 3D Engine</span>
+          </div>
         </div>
 
         {/* Arcade Combat HUD */}
@@ -239,9 +257,10 @@ export const App: React.FC = () => {
           onDamageDummy={handleDamageDummy}
         />
 
-        {/* Mobile Touch Screen Fighting Controls */}
+        {/* Mobile Touch Screen Fighting Controls (Ergonomic Landscape Easy Fighting) */}
         <MobileFightControls
           onMove={(vector) => battleCanvasRef.current?.setVirtualJoystick(vector)}
+          onJump={() => battleCanvasRef.current?.triggerJump()}
           onLightAttack={() => battleCanvasRef.current?.triggerLightAttack()}
           onHeavyAttack={() => battleCanvasRef.current?.triggerHeavyAttack()}
           onSpecial={() => battleCanvasRef.current?.triggerSpecial()}
@@ -347,6 +366,9 @@ export const App: React.FC = () => {
           message="Connect your Love Battle backend URL (e.g. Render/Railway URL) for 1v1 online couple multiplayer, or jump into the 3D Training Dojo right away!"
         />
       )}
+
+      {/* Rotate Device to Landscape guidance overlay on mobile */}
+      <RotateLandscapePrompt />
     </>
   );
 };
