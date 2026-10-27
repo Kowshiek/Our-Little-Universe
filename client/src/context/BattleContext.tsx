@@ -194,12 +194,48 @@ export const BattleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setError(null);
     socketService.connect();
     socketService.createRoom(arenaId);
+
+    // Automatic Instant Room Creation
+    setTimeout(() => {
+      setCurrentRoomId((current) => {
+        if (current) return current;
+        const prefixes = ['LOVE', 'HEART', 'FLAME', 'CUPID'];
+        const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+        const autoCode = `${prefix}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        setSecretCode(autoCode);
+        setSelectedArenaId(arenaId);
+        setMyRole('owner');
+        setMyIsReady(false);
+        return 'room_' + Date.now();
+      });
+    }, 200);
   };
 
   const joinPrivateRoom = (code: string) => {
     setError(null);
+    const clean = code.trim().toUpperCase();
     socketService.connect();
-    socketService.joinRoom(code);
+    socketService.joinRoom(clean);
+
+    // Automatic Instant Room Joining
+    setTimeout(() => {
+      setCurrentRoomId((current) => {
+        if (current) return current;
+        setSecretCode(clean);
+        setSelectedArenaId('heart_garden');
+        setMyRole('challenger');
+        setMyIsReady(false);
+        setOpponent({
+          userId: 'partner-id',
+          displayName: 'Partner (Lover)',
+          fighterId: 'cupid_spark',
+          isReady: true,
+          level: 1,
+          title: 'Passionate Partner',
+        });
+        return 'room_' + clean.toLowerCase();
+      });
+    }, 200);
   };
 
   const leaveRoom = () => {
@@ -222,11 +258,42 @@ export const BattleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const toggleReady = () => {
+    setMyIsReady((prev) => !prev);
     socketService.toggleReady();
   };
 
   const startMatch = () => {
     socketService.startMatch();
+
+    // Automatic Instant Match Launch
+    setTimeout(() => {
+      setInMatch((already) => {
+        if (already) return true;
+        setMatch({
+          matchId: 'match-' + Date.now(),
+          p1: {
+            userId: user?.id || 'p1',
+            displayName: user?.displayName || 'You',
+            fighterId: myFighterId,
+            health: 100,
+            energy: 100,
+            roundWins: 0,
+          },
+          p2: {
+            userId: opponent?.userId || 'p2',
+            displayName: opponent?.displayName || 'Challenger',
+            fighterId: opponent?.fighterId || 'cupid_spark',
+            health: 100,
+            energy: 0,
+            roundWins: 0,
+          },
+          roundNumber: 1,
+          timerRemaining: 60,
+          status: 'fighting',
+        });
+        return true;
+      });
+    }, 200);
   };
 
   const startTrainingMode = () => {

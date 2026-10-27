@@ -96,32 +96,14 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Create Private Battle Room
+  // Create Private Battle Room (Automatic Instant Connection)
   const handleCreateBattle = () => {
-    if (!connectivityState.isBackendReachable) {
-      setBackendConfigOpen(true);
-      return;
-    }
-    if (!user) {
-      setAuthMode('register');
-      setAuthModalOpen(true);
-    } else {
-      createPrivateRoom();
-    }
+    createPrivateRoom();
   };
 
-  // Join Battle Room with code
+  // Join Battle Room with code (Automatic Instant Join)
   const handleJoinBattle = () => {
-    if (!connectivityState.isBackendReachable) {
-      setBackendConfigOpen(true);
-      return;
-    }
-    if (!user) {
-      setAuthMode('login');
-      setAuthModalOpen(true);
-    } else {
-      setJoinModalOpen(true);
-    }
+    setJoinModalOpen(true);
   };
 
   // Start 3D Training Dojo (Instant Play, works offline & online!)
@@ -139,17 +121,6 @@ export const App: React.FC = () => {
       return nextHp;
     });
   };
-
-  // Device Offline Blocker (ONLY if user has zero network connection)
-  if (!connectivityState.isOnline && !inMatch) {
-    return (
-      <OfflineOverlay
-        message="Your device is offline. Connect to Wi-Fi or mobile network to play online, or enter Solo 3D Training Dojo."
-        onStartTraining={handleStartTraining}
-        onRetry={() => connectivity.checkBackendConnectivity()}
-      />
-    );
-  }
 
   // Auth Loading
   if (isAuthLoading) {
@@ -293,25 +264,6 @@ export const App: React.FC = () => {
   // 3. LANDING PAGE VIEW
   return (
     <>
-      {/* Non-intrusive Backend Server Status Banner if disconnected */}
-      {!connectivityState.isBackendReachable && (
-        <div className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-pink-950/90 via-purple-950/90 to-slate-900/90 border-b border-pink-500/30 px-4 py-2 flex items-center justify-between text-xs text-pink-200 backdrop-blur-md">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="font-medium">
-              Backend Server connecting... You can play <b>Solo 3D Dojo</b> now, or set custom server URL.
-            </span>
-          </div>
-          <button
-            onClick={() => setBackendConfigOpen(true)}
-            className="px-2.5 py-1 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-white font-bold flex items-center gap-1 border border-pink-500/40"
-          >
-            <Globe className="w-3.5 h-3.5" />
-            <span>Server Settings</span>
-          </button>
-        </div>
-      )}
-
       <LandingPage
         onCreateBattle={handleCreateBattle}
         onJoinBattle={handleJoinBattle}

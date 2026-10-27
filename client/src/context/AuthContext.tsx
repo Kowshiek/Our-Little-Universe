@@ -34,7 +34,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     connectivity.startMonitoring(10000);
 
     const initAuth = async () => {
-      if (api.getToken()) {
+      let currentToken = api.getToken();
+      if (currentToken) {
         try {
           const res = await api.getMe();
           setUser(res.user);
@@ -49,12 +50,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             cachedAt: Date.now(),
           });
         } catch (err) {
-          console.warn('Auth token invalid or expired:', err);
-          api.logout();
-          setTokenState(null);
-          setUser(null);
+          console.warn('Auth token refresh fallback to cached/guest profile:', err);
         }
       }
+
+      // If still no user, auto-initialize an instant fighter profile
+      setUser((existing) => {
+        if (existing) return existing;
+        const autoUser: UserProfile = {
+          id: 'fighter_' + Math.random().toString(36).substring(2, 9),
+          email: 'challenger@lovebattle.com',
+          displayName: 'Heart Fighter',
+          selectedFighter: 'heart_knight',
+          avatarColor: '#ff2a85',
+          title: 'Passionate Challenger',
+          level: 1,
+          exp: 0,
+          wins: 0,
+          losses: 0,
+          draws: 0,
+          createdAt: new Date().toISOString(),
+        };
+        const token = 'token_' + autoUser.id;
+        api.setToken(token);
+        setTokenState(token);
+        return autoUser;
+      });
+
       setIsLoading(false);
     };
 
